@@ -22,12 +22,8 @@ loop_dir = int( sys.argv[5] )
 # Read in density file
 x, y, z, rho = fts.read_real_3d_dat(Nx[0], Nx[1], Nx[2], sys.argv[6])
 
-
-
 # Calculate density slice
 slice , std = fts.avg_3d_full_slice_no_shift(Nx[0], Nx[1], Nx[2], loop_dir, rho)
-
-
 
 # Write output
 otp = open("dens_no-shift_slice.dat","w")
