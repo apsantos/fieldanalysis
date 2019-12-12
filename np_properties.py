@@ -79,6 +79,10 @@ class Analysis(object):
         self._f_type = parser.parse_args().traj_type
         self._run_name = self._traj_filename[:len(self._traj_filename)-1-len(self._f_type)]
 
+        self.np_type = parser.parse_args().np_type
+        self.graft_type = parser.parse_args().graft_type
+        self.matrix_type = parser.parse_args().matrix_type
+
         self.output_on = False
         if (parser.parse_args().output):
             self.output_on = True
@@ -811,6 +815,12 @@ def main(argv=None):
     parser.add_argument("--rdf_inNP", type=str, nargs='+',
                    help='Radial distribution function within a nanoparticle bin width and the atom names'
                         'eg: --rdf_inNP 0.3 IO HG')
+    parser.add_argument("--np_type", type=str, default='O',
+                   help='charachter name for the NP type')
+    parser.add_argument("--graft_type", type=str, default='H',
+                   help='charachter name for the graft type')
+    parser.add_argument("--matrix_type", type=str, default='He',
+                   help='charachter name for the matrix type')
     parser.add_argument("-o", "--output", metavar='outputFile', type=str, choices=['chk', 'frag', 'xyz', 'gro', 'g96', 'xml', 'lmp'],
                    help='Output a file in a specific format (frag requires mcf to zero at COM):'
                         '-o xyz')
