@@ -79,9 +79,11 @@ class Analysis(object):
         self._f_type = parser.parse_args().traj_type
         self._run_name = self._traj_filename[:len(self._traj_filename)-1-len(self._f_type)]
 
-        self.np_type = parser.parse_args().np_type
-        self.graft_type = parser.parse_args().graft_type
-        self.matrix_type = parser.parse_args().matrix_type
+        self.gnp_mol_name = parser.parse_args().gnp_name
+
+        self.np_aname = parser.parse_args().np_name
+        self.graft_aname = parser.parse_args().graft_name
+        self.matrix_aname = parser.parse_args().matrix_name
 
         self.output_on = False
         if (parser.parse_args().output):
@@ -168,7 +170,7 @@ class Analysis(object):
         Add analysis values based on a string
         """
         if (self.density_calc):
-            self.density = Density(self.density_bin_width, self.param_name)
+            self.density = Density(self.density_bin_width, [self.np_aname, self.graft_aname, self.matrix_aname])
 
         if (self.moment_calc or self.gyration_calc):
             self.RG = RadiiGyration()
@@ -235,13 +237,16 @@ class Analysis(object):
                     self.setTrajProperties(frame, trajectory)
 
             if self.rdf_inNP_calc or self.density_calc:
-                NPmolids = self.find_NPmolids(frame)
+                NPmolids = self.findNPmolids(frame)
                 for iNP in NPmolids:
                     if self.rdf_type_calc:
                         if self.rdf_inNP_calc:
                             self.rdf.addNP(iNP)
                     if self.density_calc:
-                        self.density.calculate(iNP)
+                        self.density.addNP(iNP)
+                if self.density_calc:
+                    self.density.addNPpos(frame)
+                    self.density.calculate()
 
             if self.rdf_type_calc:
                 self.rdf.setFrame(frame)
@@ -289,7 +294,7 @@ class Analysis(object):
     def findNPmolids(self, frame):
         molids = []
         for iatom in range(frame['natoms']):
-            if frame['aname'][iatom] == self.NPname:
+            if frame['mol_name'][iatom] == self.gnp_mol_name:
                 molids.append( frame['amol'][iatom] )
 
         return molids 
@@ -700,8 +705,8 @@ class Density(object):
     """
     def __init__(self, binsize, type_names, nbins=1000):
         self.binsize = binsize
-        self.lclusters = []
-        self.ncluster = 0
+        self.gnp_imol = []
+        self.Ngnp = 0
         self.bin_cut = 0
         self.ntypes = 0
         self.types = []
@@ -716,14 +721,25 @@ class Density(object):
         self.density = np.zeros( (self.ntypes, self.nbins), dtype = np.float)
         self.max_dist = 0
 
-    def addCluster(self, cluster):
-        #cluster class
-        self.clus = cluster
+    def addNP(self, imolNP):
+        self.NPmolids.append(imolNP)
+        self.Ngnp += 1
+        if self.inNP_calc:
+            self.setTypeSizes()
 
-        self.lclusters = []
+    def addNPpos(self, frame):
+        self.pos = np.zeros((self.Ngnp,500,3))
+        self.name = np.chararray((self.Ngnp,500))
+        self.mass = np.zeros((self.Ngnp,500))
+        for iatom in range(frame['natoms']):
+            molid = frame['amol'][iatom]
+            if molid in self.NPmolids:
+                self.pos[molid,np_atom[molid],:] = frame['pos'][iatom,:]
+                self.name[molid,np_atom[molid]] = frame['aname'][iatom] 
+                self.mass[molid,np_atom[molid]] = 1.0
 
     def write(self, runname):
-        if (self.ncluster == 0):
+        if (self.Ngnp == 0):
             print 'No clusters found'
             return
 
@@ -745,24 +761,15 @@ class Density(object):
 
             dens_ofile.write( "\n" )
 
-    def calculate(self, M):
-        this_clus = -1
-        for iclus in self.clus.l_cluster:
-            if (M == self.clus.N[iclus] and iclus not in self.lclusters):
-                this_clus = iclus
-                self.lclusters.append(iclus)
-                break
+    def calculate(self):
+        com_np, com_np_pos, com_np_name = self.comNPPosName(inp)
 
-        if (this_clus < 0): return
-        # positions corrected for the COM
-        com_clus, com_clus_pos, com_clus_name = self.clus.comClusterPosName(iclus)
+        n_atom_np = len(com_np_pos[:,0])
+        if (n_atom_np < 2): return
 
-        n_atom_cluster = len(com_clus_pos[:,0])
-        if (n_atom_cluster < 2): return
-
-        self.ncluster += 1
+        self.nnp += 1
         # loop over amphiphiles/chains/molecules
-        for iatom in range( n_atom_cluster ):
+        for iatom in range( n_atom_np ):
             # calculate the moment of gyration tensor
             distance = (com_clus_pos[iatom,0]**2 + com_clus_pos[iatom,1]**2 + com_clus_pos[iatom,2]**2)**0.5
             itype = 0
@@ -775,6 +782,110 @@ class Density(object):
 
             ibin = int(distance / self.binsize)
             self.density[itype, ibin] += 1
+
+    def checkSplitCluster(self, iclus):
+        """
+        check if a cluster is split by any periodic boundary
+        add a flag to that cluster, which will be applied in the comCluster subroutine
+        """
+        self.split_cluster = np.zeros( ( self.clusmax+1, self.dim ) , dtype=np.int)
+        split_dim = []
+        # if the cluster is within the aggregation number we are interested
+        if (self.N[iclus] > 0) :
+            while self.split_cluster[iclus, :].any() == 0:
+                for imol in range(1, self.nmol+1):
+                    # first atom/site in that chain/molecule
+                    cur_clus = self.clabel[imol]
+                    if (cur_clus == iclus):
+                        for itype in self.cluster_type:
+                            for idim in range(3) :
+                                if idim in split_dim: continue
+                                split_low, split_high = self.checkSplitMolecule(self.apos[itype, imol, :, :], idim)
+                                if (split_low or split_high):
+                                    self.split_cluster[iclus, idim] = 1
+                                    split_dim.append(idim)
+                            
+                            for jmol in range(imol+1, self.nmol+1):
+                                cur_clus = self.clabel[imol]
+                                if (cur_clus == iclus):
+                                    for jtype in self.cluster_type:
+                                        splits = self.split_neighbor(jmol, imol, jtype, itype)
+                                        for idim in splits:
+                                            if ( idim in split_dim ): continue
+                                            self.split_cluster[iclus, idim] = 1
+                                            split_dim.append(idim)
+                return
+ 
+    def comCluster(self, iclus):
+        """
+        Calculate the center of mass of a cluster 
+        for all types as a function of micelle COM
+        returns array of [total, type_1, type_2, ...]
+        """
+        com = np.zeros( (self.ntypes+1, 3), dtype=np.float)
+        mols_in_cluster = np.zeros( ( self.ntypes+1 ) )
+        self.checkSplitCluster(iclus)
+        # loop over chains/molecuels
+
+        # calculate the ceneter-of-mass of molecules
+        for itype in self.cluster_type:
+            for imol in range(1,self.nmol+1):
+                cur_clus = self.clabel[imol]
+                if (cur_clus == iclus):
+                    mols_in_cluster[itype] += 1
+                    mol_com = self.com(itype, imol)
+                    for idim in range(3) :
+                        com[itype, idim] += mol_com[idim]
+                        if ( self.split_cluster[iclus][idim] != 0 ) :
+                            if (mol_com[idim] < self.box_mid[idim]):
+                                com[itype, idim] += self.box_length[idim]
+
+            # reduce the center of mass by the number of molecules in the type
+            for idim in range(3) :
+                if (mols_in_cluster[itype] > 1):
+                    com[itype, idim] = com[itype, idim] / float(mols_in_cluster[itype])
+                if ( com[itype, idim] > self.box[idim, 1] ) :
+                    com[itype, idim] -= self.box_length[idim] 
+
+        for idim in range(3) :
+            com[0, idim] = np.average(com[1:, idim])
+
+        return com
+
+
+    def comClusterPosName(self, iclus):
+        """
+        Calculate the center of mass of a cluster density of 
+        all types as a function of micelle COM
+        returns array of [total, type_1, type_2, ...]
+        """
+        com = self.comCluster(iclus)
+        max_n_atom_in_cluster = ( self.N[iclus] * max(self.n_in_atype) )
+        # calculate the ceneter-of-mass of the cluster
+        com_cluster_pos = np.zeros( (max_n_atom_in_cluster, 3), dtype=np.float)
+        name = []
+
+        # loop over chains/molecuels
+        catom = 0
+        for iatom in range(self.natoms):
+            itype = self.atype[iatom]
+            if itype in self.cluster_type:
+                imol = self.amol[iatom]
+                cur_clus = self.clabel[imol]
+                if (cur_clus == iclus):
+                    name.append(self.aname[iatom])
+                    for idim in range(3) :
+                        # shift the positions by the com
+                        com_cluster_pos[catom, idim] = self.wpos[iatom, idim] - com[itype, idim]
+                        if ( com_cluster_pos[catom, idim] > self.box[idim, 1] ):
+                            com_cluster_pos[catom, idim] -= self.box_length[idim]
+                        elif ( com_cluster_pos[catom, idim] < self.box[idim, 0] ):
+                            com_cluster_pos[catom, idim] += self.box_length[idim]
+                    catom += 1
+
+        return com, com_cluster_pos, name
+
+
 
 def main(argv=None):
     # Parse in command-line arguments, and create the user help instructions
@@ -815,12 +926,14 @@ def main(argv=None):
     parser.add_argument("--rdf_inNP", type=str, nargs='+',
                    help='Radial distribution function within a nanoparticle bin width and the atom names'
                         'eg: --rdf_inNP 0.3 IO HG')
-    parser.add_argument("--np_type", type=str, default='O',
-                   help='charachter name for the NP type')
-    parser.add_argument("--graft_type", type=str, default='H',
-                   help='charachter name for the graft type')
-    parser.add_argument("--matrix_type", type=str, default='He',
-                   help='charachter name for the matrix type')
+    parser.add_argument("--gnp_name", type=str, default='GP',
+                   help='Molecule name for grafted nanoparticle')
+    parser.add_argument("--np_name", type=str, default='O',
+                   help='charachter name for the NP name')
+    parser.add_argument("--graft_name", type=str, default='H',
+                   help='charachter name for the graft name')
+    parser.add_argument("--matrix_name", type=str, default='He',
+                   help='charachter name for the matrix name')
     parser.add_argument("-o", "--output", metavar='outputFile', type=str, choices=['chk', 'frag', 'xyz', 'gro', 'g96', 'xml', 'lmp'],
                    help='Output a file in a specific format (frag requires mcf to zero at COM):'
                         '-o xyz')
