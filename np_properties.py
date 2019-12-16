@@ -257,7 +257,7 @@ class Analysis(object):
 
             if (self.output_on):
                 if (self.savethemicelles):
-                    # Don't print empty clusters
+                    # Don't print empty nps
                     if (frame['natoms'] == 0):
                         continue
 
@@ -372,7 +372,7 @@ class rdf(object):
         self.setTypeSizes()
 
     def addNP(self, imolNP):
-        #cluster class
+        #np class
         self.imolNP = imolNP
         if self.inNP_calc:
             self.setTypeSizes()
@@ -707,6 +707,7 @@ class Density(object):
         self.binsize = binsize
         self.gnp_imol = []
         self.Ngnp = 0
+        self.NatomsNP = []
         self.bin_cut = 0
         self.ntypes = 0
         self.types = []
@@ -724,6 +725,9 @@ class Density(object):
     def addNP(self, imolNP):
         self.NPmolids.append(imolNP)
         self.Ngnp += 1
+        while len(self.NatomsNP) <= imolNP:
+            self.NatomsNP.append(0)
+
         if self.inNP_calc:
             self.setTypeSizes()
 
@@ -731,9 +735,11 @@ class Density(object):
         self.pos = np.zeros((self.Ngnp,500,3))
         self.name = np.chararray((self.Ngnp,500))
         self.mass = np.zeros((self.Ngnp,500))
+        self.config_natoms = frame['natoms']
         for iatom in range(frame['natoms']):
             molid = frame['amol'][iatom]
             if molid in self.NPmolids:
+                self.NatomsNP[molid] += 1
                 self.pos[molid,np_atom[molid],:] = frame['pos'][iatom,:]
                 self.name[molid,np_atom[molid]] = frame['aname'][iatom] 
                 self.mass[molid,np_atom[molid]] = 1.0
@@ -783,67 +789,67 @@ class Density(object):
             ibin = int(distance / self.binsize)
             self.density[itype, ibin] += 1
 
-    def checkSplitCluster(self, iclus):
+    def checkSplitNP(self, inp):
         """
-        check if a cluster is split by any periodic boundary
-        add a flag to that cluster, which will be applied in the comCluster subroutine
+        check if a np is split by any periodic boundary
+        add a flag to that np, which will be applied in the comCluster subroutine
         """
-        self.split_cluster = np.zeros( ( self.clusmax+1, self.dim ) , dtype=np.int)
+        self.split_np = np.zeros( ( self.npmax+1, self.dim ) , dtype=np.int)
         split_dim = []
-        # if the cluster is within the aggregation number we are interested
-        if (self.N[iclus] > 0) :
-            while self.split_cluster[iclus, :].any() == 0:
+        # if the np is within the aggregation number we are interested
+        if (self.N[inp] > 0) :
+            while self.split_np[inp, :].any() == 0:
                 for imol in range(1, self.nmol+1):
                     # first atom/site in that chain/molecule
-                    cur_clus = self.clabel[imol]
-                    if (cur_clus == iclus):
-                        for itype in self.cluster_type:
+                    cur_np = self.clabel[imol]
+                    if (cur_np == inp):
+                        for itype in self.np_type:
                             for idim in range(3) :
                                 if idim in split_dim: continue
                                 split_low, split_high = self.checkSplitMolecule(self.apos[itype, imol, :, :], idim)
                                 if (split_low or split_high):
-                                    self.split_cluster[iclus, idim] = 1
+                                    self.split_np[inp, idim] = 1
                                     split_dim.append(idim)
                             
                             for jmol in range(imol+1, self.nmol+1):
-                                cur_clus = self.clabel[imol]
-                                if (cur_clus == iclus):
-                                    for jtype in self.cluster_type:
+                                cur_np = self.clabel[imol]
+                                if (cur_np == inp):
+                                    for jtype in self.np_type:
                                         splits = self.split_neighbor(jmol, imol, jtype, itype)
                                         for idim in splits:
                                             if ( idim in split_dim ): continue
-                                            self.split_cluster[iclus, idim] = 1
+                                            self.split_np[inp, idim] = 1
                                             split_dim.append(idim)
                 return
  
-    def comCluster(self, iclus):
+    def comNP(self, inp):
         """
-        Calculate the center of mass of a cluster 
-        for all types as a function of micelle COM
+        Calculate the center of mass of a np 
+        for all types as a function of np COM
         returns array of [total, type_1, type_2, ...]
         """
-        com = np.zeros( (self.ntypes+1, 3), dtype=np.float)
-        mols_in_cluster = np.zeros( ( self.ntypes+1 ) )
-        self.checkSplitCluster(iclus)
+        com = np.zeros( (3), dtype=np.float)
+        mols_in_np = np.zeros( ( self.ntypes+1 ) )
+        self.checkSplitNP(inp)
         # loop over chains/molecuels
 
         # calculate the ceneter-of-mass of molecules
-        for itype in self.cluster_type:
+        for itype in self.np_type:
             for imol in range(1,self.nmol+1):
-                cur_clus = self.clabel[imol]
-                if (cur_clus == iclus):
-                    mols_in_cluster[itype] += 1
+                cur_np = self.clabel[imol]
+                if (cur_np == inp):
+                    mols_in_np[itype] += 1
                     mol_com = self.com(itype, imol)
                     for idim in range(3) :
                         com[itype, idim] += mol_com[idim]
-                        if ( self.split_cluster[iclus][idim] != 0 ) :
+                        if ( self.split_np[inp][idim] != 0 ) :
                             if (mol_com[idim] < self.box_mid[idim]):
                                 com[itype, idim] += self.box_length[idim]
 
             # reduce the center of mass by the number of molecules in the type
             for idim in range(3) :
-                if (mols_in_cluster[itype] > 1):
-                    com[itype, idim] = com[itype, idim] / float(mols_in_cluster[itype])
+                if (mols_in_np[itype] > 1):
+                    com[itype, idim] = com[itype, idim] / float(mols_in_np[itype])
                 if ( com[itype, idim] > self.box[idim, 1] ) :
                     com[itype, idim] -= self.box_length[idim] 
 
@@ -852,40 +858,28 @@ class Density(object):
 
         return com
 
-
-    def comClusterPosName(self, iclus):
+    def comNPPosName(self, inp):
         """
-        Calculate the center of mass of a cluster density of 
-        all types as a function of micelle COM
+        Calculate the center of mass of a nanoparticle density of 
+        all types as a function of NP COM
         returns array of [total, type_1, type_2, ...]
         """
-        com = self.comCluster(iclus)
-        max_n_atom_in_cluster = ( self.N[iclus] * max(self.n_in_atype) )
-        # calculate the ceneter-of-mass of the cluster
-        com_cluster_pos = np.zeros( (max_n_atom_in_cluster, 3), dtype=np.float)
+        com = self.comNP(inp)
+        # calculate the ceneter-of-mass of the np
+        com_np_pos = np.zeros( (self.NatomsNP[inp], 3), dtype=np.float)
         name = []
 
         # loop over chains/molecuels
-        catom = 0
-        for iatom in range(self.natoms):
-            itype = self.atype[iatom]
-            if itype in self.cluster_type:
-                imol = self.amol[iatom]
-                cur_clus = self.clabel[imol]
-                if (cur_clus == iclus):
-                    name.append(self.aname[iatom])
-                    for idim in range(3) :
-                        # shift the positions by the com
-                        com_cluster_pos[catom, idim] = self.wpos[iatom, idim] - com[itype, idim]
-                        if ( com_cluster_pos[catom, idim] > self.box[idim, 1] ):
-                            com_cluster_pos[catom, idim] -= self.box_length[idim]
-                        elif ( com_cluster_pos[catom, idim] < self.box[idim, 0] ):
-                            com_cluster_pos[catom, idim] += self.box_length[idim]
-                    catom += 1
+        for iatom in range(self.NatomsNP[inp]):
+            for idim in range(3) :
+                # shift the positions by the com
+                com_np_pos[idim] = self.pos[iatom,idim] - com[idim]
+                if ( com_np_pos[idim] > self.box[idim, 1] ):
+                    com_np_pos[idim] -= self.box_length[idim]
+                elif ( com_np_pos[idim] < self.box[idim, 0] ):
+                    com_np_pos[idim] += self.box_length[idim]
 
-        return com, com_cluster_pos, name
-
-
+        return com, com_np_pos, name
 
 def main(argv=None):
     # Parse in command-line arguments, and create the user help instructions
