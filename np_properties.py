@@ -733,6 +733,7 @@ class Density(object):
     """
     def __init__(self, binsize, type_names, nbins=1000):
         self.binsize = binsize
+        self.nframes =0
         self.totalNgnp = 0
         self.bin_cut = 0
         self.nbins = nbins
@@ -740,6 +741,7 @@ class Density(object):
         self.anchor_name = type_names['anchor']
         self.graft_name = type_names['graft']
         self.matrix_name = type_names['matrix']
+        self.solution_names = [type_names['matrix']]
         self.type_names = type_names
         self.type_nums = {}
         
@@ -840,8 +842,11 @@ class Density(object):
 
         dens_ofile = open('./' + runname + '.rho', 'w')
         dens_ofile.write( "# r " )
+        itype = 0
         for key in self.type_names:
             dens_ofile.write( "%s " % self.type_names[key])
+            itype += 1
+
         dens_ofile.write( "\n" )
         factor = (4.0 / 3.0) * ma.pi
         for ibin in range(0, self.nbins):
@@ -850,13 +855,15 @@ class Density(object):
 
             dens_ofile.write( "%f " % r)
 
-            V_bin = 1#factor * self.binsize**3.0 * ((ibin + 1)**3.0 - ibin**3.0)
+            V_bin = factor * self.binsize**3.0 * ((ibin + 1)**3.0 - ibin**3.0)
             for itype in range(self.ntypes):
                 dens_ofile.write( "%f " % (self.density[itype, ibin] / self.totalNgnp / V_bin) )
+                
 
             dens_ofile.write( "\n" )
 
     def calculate(self):
+        self.nframes += 1
         for inp in range(len(self.NPmolids)):
 
             n_atom_np = self.NatomsNP[inp]
@@ -866,21 +873,19 @@ class Density(object):
             cross_distance = [0,0,0]
             p_pos = self.gnp_center_pos[inp,:]
             igraft = 0
-            pgraft = 0
             for iatom in range( n_atom_np ):
                 # see if an atom has crossed the border
                 if self.gnp_name[inp,iatom] == self.anchor_name:
                     igraft += 1
-                elif self.gnp_name[inp,iatom] == self.graft_name:
-                    if igraft != pgraft:
-                        cross_distance = [0,0,0]
-                        pgraft = igraft
-                    diff =  self.gnp_pos[inp,iatom,:] - p_pos
-                    for idim in range(3):
-                        if diff[idim] > self.box_length_half[idim]:
-                            cross_distance[idim] -= self.box_length[idim]
-                        elif diff[idim] < -self.box_length_half[idim]:
-                            cross_distance[idim] += self.box_length[idim]
+                    p_pos = self.gnp_center_pos[inp,:]
+                    cross_distance = [0,0,0]
+
+                diff =  self.gnp_pos[inp,iatom,:] - p_pos
+                for idim in range(3):
+                    if diff[idim] > self.box_length_half[idim]:
+                        cross_distance[idim] -= self.box_length[idim]
+                    elif diff[idim] < -self.box_length_half[idim]:
+                        cross_distance[idim] += self.box_length[idim]
                 
                 p = self.gnp_pos[inp,iatom,:] - self.gnp_center_pos[inp,:] + cross_distance[:]
                 distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
@@ -892,38 +897,33 @@ class Density(object):
 
 
     def calculateSOL(self):
-        for isol in range(len(self.SOLmolids)):
+        for inp in range(len(self.NPmolids)):
+            for isol in range(len(self.SOLmolids)):
 
-            n_atom_sol = self.NatomsSOL[isol]
-            if (n_atom_sol < 2): return
+                n_atom_sol = self.NatomsSOL[isol]
+                if (n_atom_sol < 2): return
 
-            # loop over amphiphiles/chains/molecules
-            cross_distance = [0,0,0]
-            p_pos = self.sol_center_pos[isol,:]
-            igraft = 0
-            pgraft = 0
-            for iatom in range( n_atom_sol ):
-                # see if an atom has crossed the border
-                if self.sol_name[isol,iatom] == self.anchor_name:
-                    igraft += 1
-                elif self.sol_name[isol,iatom] == self.graft_name:
-                    if igraft != pgraft:
-                        cross_distance = [0,0,0]
-                        pgraft = igraft
-                    diff =  self.sol_pos[isol,iatom,:] - p_pos
-                    for idim in range(3):
-                        if diff[idim] > self.box_length_half[idim]:
-                            cross_distance[idim] -= self.box_length[idim]
-                        elif diff[idim] < -self.box_length_half[idim]:
-                            cross_distance[idim] += self.box_length[idim]
-                
-                p = self.sol_pos[isol,iatom,:] - self.sol_center_pos[isol,:] + cross_distance[:]
-                distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
+                # loop over amphiphiles/chains/molecules
+                cross_distance = [0,0,0]
+                igraft = 0
+                pgraft = 0
+                for iatom in range( n_atom_sol ):
+                    # see if an atom has crossed the border
+                    if iatom > 0:
+                        diff =  self.sol_pos[isol,iatom,:] - p_pos
+                        for idim in range(3):
+                            if diff[idim] > self.box_length_half[idim]:
+                                cross_distance[idim] -= self.box_length[idim]
+                            elif diff[idim] < -self.box_length_half[idim]:
+                                cross_distance[idim] += self.box_length[idim]
+                    
+                    p = self.sol_pos[isol,iatom,:] - self.gnp_center_pos[inp,:] + cross_distance[:]
+                    distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
 
-                self.max_dist = max(self.max_dist, distance)
-                ibin = int(distance / self.binsize)
-                self.density[self.type_nums[self.sol_name[isol, iatom]], ibin] += 1
-                p_pos = self.sol_pos[isol,iatom,:]
+                    self.max_dist = max(self.max_dist, distance)
+                    ibin = int(distance / self.binsize)
+                    self.density[self.type_nums[self.sol_name[isol, iatom]], ibin] += 1
+                    p_pos = self.sol_pos[isol,iatom,:]
 
     def checkSplitNP(self, inp):
         """
