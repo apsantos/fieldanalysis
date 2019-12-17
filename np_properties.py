@@ -79,11 +79,13 @@ class Analysis(object):
         self._f_type = parser.parse_args().traj_type
         self._run_name = self._traj_filename[:len(self._traj_filename)-1-len(self._f_type)]
 
-        self.gnp_mol_name = parser.parse_args().gnp_name
-
         self.np_aname = parser.parse_args().np_name
         self.graft_aname = parser.parse_args().graft_name
+        self.anchor_aname = parser.parse_args().anchor_name
         self.matrix_aname = parser.parse_args().matrix_name
+
+        self.gnp_mol_name = parser.parse_args().gnp_name
+        self.solution_anames = [self.matrix_aname]
 
         self.output_on = False
         if (parser.parse_args().output):
@@ -170,7 +172,9 @@ class Analysis(object):
         Add analysis values based on a string
         """
         if (self.density_calc):
-            self.density = Density(self.density_bin_width, [self.np_aname, self.graft_aname, self.matrix_aname])
+            type_dict = {'np':self.np_aname,'anchor':self.anchor_aname,'graft':self.graft_aname,'matrix':self.matrix_aname}
+            self.density = Density(self.density_bin_width, type_dict)
+            self.density.setBox(self.box)
 
         if (self.moment_calc or self.gyration_calc):
             self.RG = RadiiGyration()
@@ -237,16 +241,18 @@ class Analysis(object):
                     self.setTrajProperties(frame, trajectory)
 
             if self.rdf_inNP_calc or self.density_calc:
-                NPmolids = self.findNPmolids(frame)
-                for iNP in NPmolids:
-                    if self.rdf_type_calc:
-                        if self.rdf_inNP_calc:
+                NPatomids, NPmolids = self.findNPmolids(frame)
+                if self.rdf_type_calc:
+                    if self.rdf_inNP_calc:
+                        for iNP in NPmolids:
                             self.rdf.addNP(iNP)
-                    if self.density_calc:
-                        self.density.addNP(iNP)
                 if self.density_calc:
+                    self.density.addNP(NPmolids, NPatomids)
                     self.density.addNPpos(frame)
+                    SOLatomids, SOLmolids = self.findSolutionids(frame)
+                    self.density.addSolution(frame,SOLatomids, SOLmolids)
                     self.density.calculate()
+                    self.density.calculateSOL()
 
             if self.rdf_type_calc:
                 self.rdf.setFrame(frame)
@@ -293,11 +299,33 @@ class Analysis(object):
 
     def findNPmolids(self, frame):
         molids = []
+        atomids = []
+        nmol = -1
         for iatom in range(frame['natoms']):
             if frame['mol_name'][iatom] == self.gnp_mol_name:
-                molids.append( frame['amol'][iatom] )
+                amol = frame['amol'][iatom]
+                if amol not in molids:
+                    atomids.append( [] )
+                    molids.append( frame['amol'][iatom] )
+                    nmol += 1
+                atomids[nmol].append( iatom )
 
-        return molids 
+        return atomids, molids
+
+    def findSolutionids(self, frame):
+        molids = []
+        atomids = []
+        nmol = -1
+        for iatom in range(frame['natoms']):
+            if frame['aname'][iatom] in self.solution_anames:
+                amol = frame['amol'][iatom]
+                if amol not in molids:
+                    atomids.append( [] )
+                    molids.append( frame['amol'][iatom] )
+                    nmol += 1
+                atomids[nmol].append( iatom )
+
+        return atomids, molids
 
 class rdf(object):
     """
@@ -705,44 +733,105 @@ class Density(object):
     """
     def __init__(self, binsize, type_names, nbins=1000):
         self.binsize = binsize
-        self.gnp_imol = []
-        self.Ngnp = 0
-        self.NatomsNP = []
+        self.totalNgnp = 0
         self.bin_cut = 0
-        self.ntypes = 0
-        self.types = []
         self.nbins = nbins
-        for ispecies in range(len(type_names)):
-        #for ispecies in range(len(type_names[:][0])):
-            for iname in type_names[ispecies][:]:
-                if iname not in self.types:
-                    self.types.append(iname)
-                    self.ntypes += 1
+        self.np_name = type_names['np']
+        self.anchor_name = type_names['anchor']
+        self.graft_name = type_names['graft']
+        self.matrix_name = type_names['matrix']
+        self.type_names = type_names
+        self.type_nums = {}
+        
+        self.ntypes = 0
+        for key, value in type_names.items():
+            self.type_nums[value] = self.ntypes
+            self.ntypes += 1
 
         self.density = np.zeros( (self.ntypes, self.nbins), dtype = np.float)
         self.max_dist = 0
 
-    def addNP(self, imolNP):
-        self.NPmolids.append(imolNP)
-        self.Ngnp += 1
-        while len(self.NatomsNP) <= imolNP:
-            self.NatomsNP.append(0)
+    def setBox(self, box_length):
+        # assume the lower bound is 0
+        if (len(box_length) == 3 or len(box_length) == 2):
+            if (len(box_length) == 3):
+                self.dim = 3
+            elif (len(box_length) == 2):
+                self.dim = 2
+            self.box = np.zeros( (self.dim, 2) )
+            self.box_length = np.array(box_length)
+            self.box_length_half = np.array(box_length) / 2.0
+            self.box_mid = np.array(box_length) / 2.0
+            for idim in range(self.dim):
+                self.box[idim, 1] = box_length[idim]
 
-        if self.inNP_calc:
-            self.setTypeSizes()
+        # user gave both upper and lower bound
+        elif (len(box_length) == 6 or len(box_length) == 4):
+            if (len(box_length) == 6):
+                self.dim = 3
+            elif (len(box_length) == 4):
+                self.dim = 2
+            self.box = np.zeros( (self.dim, 2) )
+            self.box_length = np.zeros((self.dim))
+            self.box_length_half = np.zeros((self.dim))
+            self.box_mid = np.zeros((self.dim))
+            for idim in range(self.dim):
+                for ilim in range(2):
+                    self.box[idim, ilim] = box_length[idim*2+ilim]
+
+                self.box_length[idim] = self.box[idim, 1] - self.box[idim, 0]
+                self.box_length_half[idim] = (self.box[idim, 1] - self.box[idim, 0]) / 2.0
+                self.box_mid[idim] = (self.box[idim, 1] + self.box[idim, 0]) / 2.0
+                if (self.box[idim, 1] < self.box[idim, 0]):
+                    raise ValueError('Box ill defined, '
+                                 'lower bound must be lower than upper bound')
+        else:
+            raise TypeError('Box ill, or not defined, '
+                           'not enough entrants (3 or 6 for 3D, 2 or 4 for 2D')
+
+    def addNP(self, NPmolids, NPatomids):
+        self.NPmolids = NPmolids
+        self.NPatomids = NPatomids
+        self.Ngnp = len(NPmolids)
+        self.totalNgnp += self.Ngnp
+        self.NatomsNP = []
+        for imolNP in range(len(NPmolids)):
+            self.NatomsNP.append(len(NPatomids[imolNP][:]))
 
     def addNPpos(self, frame):
-        self.pos = np.zeros((self.Ngnp,500,3))
-        self.name = np.chararray((self.Ngnp,500))
-        self.mass = np.zeros((self.Ngnp,500))
-        self.config_natoms = frame['natoms']
-        for iatom in range(frame['natoms']):
-            molid = frame['amol'][iatom]
-            if molid in self.NPmolids:
-                self.NatomsNP[molid] += 1
-                self.pos[molid,np_atom[molid],:] = frame['pos'][iatom,:]
-                self.name[molid,np_atom[molid]] = frame['aname'][iatom] 
-                self.mass[molid,np_atom[molid]] = 1.0
+        self.gnp_pos = np.zeros((self.Ngnp,max(self.NatomsNP),3))
+        self.gnp_center_pos = np.zeros((self.Ngnp,3))
+        self.gnp_name = np.chararray((self.Ngnp,max(self.NatomsNP)), 5)
+        self.gnp_mass = np.zeros((self.Ngnp,max(self.NatomsNP)))
+
+        for inp in range(len(self.NPmolids)):
+            for inpatom in range(len(self.NPatomids[inp])):
+                iatom = self.NPatomids[inp][inpatom]
+                if frame['aname'][iatom] == self.np_name:
+                    self.gnp_center_pos[inp,:] = frame['pos'][iatom,:]
+                self.gnp_pos[inp,inpatom,:] = frame['pos'][iatom,:]
+                self.gnp_name[inp,inpatom] = frame['aname'][iatom]
+                self.gnp_mass[inp,inpatom] = 1.0
+
+    def addSolution(self, frame, SOLatomids, SOLmolids):
+        self.SOLmolids = SOLmolids
+        self.SOLatomids = SOLatomids
+        self.NmolsSOL = len(SOLmolids)
+        self.NatomsSOL = []
+        for imolSOL in range(len(SOLmolids)):
+            self.NatomsSOL.append(len(SOLatomids[imolSOL][:]))
+
+        self.sol_pos = np.zeros((self.NmolsSOL,max(self.NatomsSOL),3))
+        self.sol_center_pos = np.zeros((self.NmolsSOL,3))
+        self.sol_name = np.chararray((self.NmolsSOL,max(self.NatomsSOL)), 5)
+        self.sol_mass = np.zeros((self.NmolsSOL,max(self.NatomsSOL)))
+
+        for isol in range(len(self.SOLmolids)):
+            for isolatom in range(len(self.SOLatomids[isol])):
+                iatom = self.SOLatomids[isol][isolatom]
+                self.sol_pos[isol,isolatom,:] = frame['pos'][iatom,:]
+                self.sol_name[isol,isolatom] = frame['aname'][iatom]
+                self.sol_mass[isol,isolatom] = 1.0
 
     def write(self, runname):
         if (self.Ngnp == 0):
@@ -751,8 +840,8 @@ class Density(object):
 
         dens_ofile = open('./' + runname + '.rho', 'w')
         dens_ofile.write( "# r " )
-        for iname in self.types:
-            dens_ofile.write( "%s " % iname)
+        for key in self.type_names:
+            dens_ofile.write( "%s " % self.type_names[key])
         dens_ofile.write( "\n" )
         factor = (4.0 / 3.0) * ma.pi
         for ibin in range(0, self.nbins):
@@ -763,64 +852,118 @@ class Density(object):
 
             V_bin = 1#factor * self.binsize**3.0 * ((ibin + 1)**3.0 - ibin**3.0)
             for itype in range(self.ntypes):
-                dens_ofile.write( "%f " % (self.density[itype, ibin] / self.ncluster / V_bin) )
+                dens_ofile.write( "%f " % (self.density[itype, ibin] / self.totalNgnp / V_bin) )
 
             dens_ofile.write( "\n" )
 
     def calculate(self):
-        com_np, com_np_pos, com_np_name = self.comNPPosName(inp)
+        for inp in range(len(self.NPmolids)):
 
-        n_atom_np = len(com_np_pos[:,0])
-        if (n_atom_np < 2): return
+            n_atom_np = self.NatomsNP[inp]
+            if (n_atom_np < 2): return
 
-        self.nnp += 1
-        # loop over amphiphiles/chains/molecules
-        for iatom in range( n_atom_np ):
-            # calculate the moment of gyration tensor
-            distance = (com_clus_pos[iatom,0]**2 + com_clus_pos[iatom,1]**2 + com_clus_pos[iatom,2]**2)**0.5
-            itype = 0
-            for iname in self.types:
-                if com_clus_name[iatom] == iname: break
-                itype += 1
+            # loop over amphiphiles/chains/molecules
+            cross_distance = [0,0,0]
+            p_pos = self.gnp_center_pos[inp,:]
+            igraft = 0
+            pgraft = 0
+            for iatom in range( n_atom_np ):
+                # see if an atom has crossed the border
+                if self.gnp_name[inp,iatom] == self.anchor_name:
+                    igraft += 1
+                elif self.gnp_name[inp,iatom] == self.graft_name:
+                    if igraft != pgraft:
+                        cross_distance = [0,0,0]
+                        pgraft = igraft
+                    diff =  self.gnp_pos[inp,iatom,:] - p_pos
+                    for idim in range(3):
+                        if diff[idim] > self.box_length_half[idim]:
+                            cross_distance[idim] -= self.box_length[idim]
+                        elif diff[idim] < -self.box_length_half[idim]:
+                            cross_distance[idim] += self.box_length[idim]
+                
+                p = self.gnp_pos[inp,iatom,:] - self.gnp_center_pos[inp,:] + cross_distance[:]
+                distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
 
-            if (distance > self.max_dist ) :
-                self.max_dist = distance
+                self.max_dist = max(self.max_dist, distance)
+                ibin = int(distance / self.binsize)
+                self.density[self.type_nums[self.gnp_name[inp, iatom]], ibin] += 1
+                p_pos = self.gnp_pos[inp,iatom,:]
 
-            ibin = int(distance / self.binsize)
-            self.density[itype, ibin] += 1
+
+    def calculateSOL(self):
+        for isol in range(len(self.SOLmolids)):
+
+            n_atom_sol = self.NatomsSOL[isol]
+            if (n_atom_sol < 2): return
+
+            # loop over amphiphiles/chains/molecules
+            cross_distance = [0,0,0]
+            p_pos = self.sol_center_pos[isol,:]
+            igraft = 0
+            pgraft = 0
+            for iatom in range( n_atom_sol ):
+                # see if an atom has crossed the border
+                if self.sol_name[isol,iatom] == self.anchor_name:
+                    igraft += 1
+                elif self.sol_name[isol,iatom] == self.graft_name:
+                    if igraft != pgraft:
+                        cross_distance = [0,0,0]
+                        pgraft = igraft
+                    diff =  self.sol_pos[isol,iatom,:] - p_pos
+                    for idim in range(3):
+                        if diff[idim] > self.box_length_half[idim]:
+                            cross_distance[idim] -= self.box_length[idim]
+                        elif diff[idim] < -self.box_length_half[idim]:
+                            cross_distance[idim] += self.box_length[idim]
+                
+                p = self.sol_pos[isol,iatom,:] - self.sol_center_pos[isol,:] + cross_distance[:]
+                distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
+
+                self.max_dist = max(self.max_dist, distance)
+                ibin = int(distance / self.binsize)
+                self.density[self.type_nums[self.sol_name[isol, iatom]], ibin] += 1
+                p_pos = self.sol_pos[isol,iatom,:]
 
     def checkSplitNP(self, inp):
         """
         check if a np is split by any periodic boundary
         add a flag to that np, which will be applied in the comCluster subroutine
         """
-        self.split_np = np.zeros( ( self.npmax+1, self.dim ) , dtype=np.int)
+        self.split_np = np.zeros( (self.dim ) , dtype=np.int)
         split_dim = []
+        igraft = 0
+        pgraft = 0
         # if the np is within the aggregation number we are interested
-        if (self.N[inp] > 0) :
-            while self.split_np[inp, :].any() == 0:
-                for imol in range(1, self.nmol+1):
-                    # first atom/site in that chain/molecule
-                    cur_np = self.clabel[imol]
-                    if (cur_np == inp):
-                        for itype in self.np_type:
-                            for idim in range(3) :
-                                if idim in split_dim: continue
-                                split_low, split_high = self.checkSplitMolecule(self.apos[itype, imol, :, :], idim)
-                                if (split_low or split_high):
-                                    self.split_np[inp, idim] = 1
-                                    split_dim.append(idim)
-                            
-                            for jmol in range(imol+1, self.nmol+1):
-                                cur_np = self.clabel[imol]
-                                if (cur_np == inp):
-                                    for jtype in self.np_type:
-                                        splits = self.split_neighbor(jmol, imol, jtype, itype)
-                                        for idim in splits:
-                                            if ( idim in split_dim ): continue
-                                            self.split_np[inp, idim] = 1
-                                            split_dim.append(idim)
-                return
+        while self.split_np[inp, :].any() == 0:
+            for iatom in range(self.NatomsNP[inp]):
+                if self.name[inp,iatom] == self.anchor_name:
+                    igraft += 1
+                elif self.name[inp,iatom] == self.graft_name:
+                    if igraft != pgraft:
+                        split_low = False
+                        split_high = False
+                        n_upper = len(self.np_p[:,idim] > self.box_mid[idim])
+                        pgraft = igraft
+                    # check if there is a split
+                    for idim in range(3) :
+                        if idim in split_dim: continue
+
+                        if (abs(self.np_p[iatom+1,idim]-self.np_p[iatom,idim]) > self.box_length_half[idim]):
+                            # check if the com is in the upper/lower half of the box bound
+                            self.split_molecule = True
+                            if (n_upper > natom/2.0):
+                                split_high = True
+                            else:
+                                split_low = True
+                            break
+
+
+                        if (split_low or split_high):
+                            self.split_np[inp, idim] = 1
+                            split_dim.append(idim)
+                        
+        return
  
     def comNP(self, inp):
         """
@@ -866,20 +1009,20 @@ class Density(object):
         """
         com = self.comNP(inp)
         # calculate the ceneter-of-mass of the np
-        com_np_pos = np.zeros( (self.NatomsNP[inp], 3), dtype=np.float)
+        com_gnp_pos = np.zeros( (self.NatomsNP[inp], 3), dtype=np.float)
         name = []
 
         # loop over chains/molecuels
         for iatom in range(self.NatomsNP[inp]):
             for idim in range(3) :
-                # shift the positions by the com
-                com_np_pos[idim] = self.pos[iatom,idim] - com[idim]
-                if ( com_np_pos[idim] > self.box[idim, 1] ):
-                    com_np_pos[idim] -= self.box_length[idim]
-                elif ( com_np_pos[idim] < self.box[idim, 0] ):
-                    com_np_pos[idim] += self.box_length[idim]
+                # shift the positions by the com, so that the com is 0
+                com_gnp_pos[idim] = self.pos[iatom,idim] - com[idim]
+                if ( com_gnp_pos[idim] > self.box[idim, 1] ):
+                    com_gnp_pos[idim] -= self.box_length[idim]
+                elif ( com_gnp_pos[idim] < self.box[idim, 0] ):
+                    com_gnp_pos[idim] += self.box_length[idim]
 
-        return com, com_np_pos, name
+        return com, com_gnp_pos, name
 
 def main(argv=None):
     # Parse in command-line arguments, and create the user help instructions
@@ -924,6 +1067,8 @@ def main(argv=None):
                    help='Molecule name for grafted nanoparticle')
     parser.add_argument("--np_name", type=str, default='O',
                    help='charachter name for the NP name')
+    parser.add_argument("--anchor_name", type=str, default='X',
+                   help='charachter name for the graft anchor name')
     parser.add_argument("--graft_name", type=str, default='H',
                    help='charachter name for the graft name')
     parser.add_argument("--matrix_name", type=str, default='He',
