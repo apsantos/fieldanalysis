@@ -27,3 +27,10 @@ Once in a while in doing my mass analysis, some of the density profiles would be
 To look at the density profiles in Sandia’s code Paraview, you can use the attached  script, e.g.:
 
 - python paraview Nx Ny Nz rhoga.tec rhoga.all
+
+Notes
+Upload tec file
+press apply
+color -> real
+put slice to see a plane
+iso -> contour
