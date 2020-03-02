@@ -28,7 +28,7 @@ else:
   while (len(line) > 0):
     if float(line[1]) > 0.0:
       ndat += 1
-      line = inp.readline().split()
+    line = inp.readline().split()
 
   #print ndat
 
@@ -61,7 +61,7 @@ else:
   while(n < 100):
     popt, pcov = curve_fit(func_fit,x,y,popt,maxfev = 100000)
     n += 1
-  #print popt
+  print popt[0], popt[1], popt[2], popt[3], pcov[0], pcov[1], pcov[2], pcov[3]
 
   fit = np.zeros(ndat,'d')
   for i in range(0,ndat):
@@ -74,7 +74,8 @@ else:
 
   iter_num = int(sys.argv[4])
   #print 100*100*(popt[2] * popt[2] / 2.0 / m.pi)
-  print popt[0]
-  print popt[1]
+  #print popt[0]
+  #print popt[1]
+
 
   otp.close()
