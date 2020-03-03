@@ -1,10 +1,13 @@
 #!/usr/bin/python
-import numpy as nmp
-import os, sys
-import cmath as cm
-import math as m
+#import math as m
 import fts_utils as fts
 import sys, argparse
+
+def file_len(fname):
+    with open(fname) as f:
+        for i, l in enumerate(f):
+            pass
+    return i + 1
 
 def main(argv=None):
     # Parse in command-line arguments, and create the user help instructions
