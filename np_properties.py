@@ -442,7 +442,7 @@ class rdf(object):
             factor = self.id_prefactor * self.nconf_type[igroup]
             #if (self.types[igroup,0] != self.types[igroup,1]):
             #    factor *= 2.0
-            for ibin in range(self.nbins_type):
+            for ibin in range(self.nbins_type-1):
                 r = self.binsize_type * (ibin + 0.5)
                 V_bin = self.binsize_type**3.0 * ((ibin + 1)**3.0 - ibin**3.0)
                 self.gr_type[ibin, igroup] /= float(factor * V_bin)

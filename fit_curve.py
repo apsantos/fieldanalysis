@@ -96,7 +96,7 @@ def main(argv=None):
     if fit_odr:
         model = odrpack.Model(profile.erf_profile_odr)
         data = odrpack.RealData(x,y)
-        myodr = odrpack.ODR(data, model, beta0=guess)
+        myodr = odrpack.ODR(data, model, beta0=guess,maxit=100,sstol=1e-5)
         output = myodr.run()
         fit_data = output.beta
         fit_stdev = output.sd_beta
@@ -115,6 +115,7 @@ def main(argv=None):
     profile.rho_l = fit_data[1]
     profile.xi = fit_data[2]
     profile.frac = fit_data[3]
+    print profile.rho_l
     print "# rho_g rho_l xi frac stdev[rho_g rho_l xi frac]"
     print fit_data[0], fit_data[1], fit_data[2], fit_data[3], fit_stdev[0], fit_stdev[1], fit_stdev[2], fit_stdev[3]
 

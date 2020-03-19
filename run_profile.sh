@@ -21,8 +21,8 @@ else
 fi
 
 # average the density mesh and create a profile
-dmft_slice.py --mesh_file avg_rhodb.dat --profile_file avg_rhodb.profile --L_direction $Lz --direction z --mesh $Mx $My $Mz --density $rho
 dmft_slice.py --mesh_file rhodb.dat --profile_file rhodb.profile --L_direction $Lz --direction z --mesh $Mx $My $Mz --density $rho
+dmft_slice.py --mesh_file avg_rhodb.dat --profile_file avg_rhodb.profile --L_direction $Lz --direction z --mesh $Mx $My $Mz --density $rho
 
 # center the denisty profile
 com2.py --profile_file rhodb.profile --centered_file rhodb.shifted -l 1

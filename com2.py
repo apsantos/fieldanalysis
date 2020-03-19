@@ -11,8 +11,7 @@ def file_len(fname):
 
 def main(argv=None):
     # Parse in command-line arguments, and create the user help instructions
-    parser = argparse.ArgumentParser(description='Average meshed-field density'
-                                                 'and convert to 1-d density profile')
+    parser = argparse.ArgumentParser(description='shift 1-d density profile so that the dense part is in the middle')
     parser.add_argument("--profile_file", type=str, required=True, help='input density profile file')
     parser.add_argument("--centered_file", type=str, default='centered_profile.dat', help='output centered density profile file')
     parser.add_argument('-l', "--start_line", type=int, default=1, help='starting line of density profile file')
@@ -48,9 +47,21 @@ def main(argv=None):
         # shift the profile by the center-of-mass
         for i in range(ndat):
             density[i,0] = density[i,0] - error - m.floor(density[i,0] - error)
-  
+
     # sort the values because they were shifted
     density = density[np.argsort(density[:,0])] 
+
+    # center the dense part
+    if density[0,1] > density[int(ndat/2.0),1]:
+        for i in range(ndat):
+            if density[i,0] >= 0.5: 
+                density[i,0] -= 0.5
+            elif density[i,0] < 0.5: 
+                density[i,0] += 0.5
+
+    # sort the values because they were shifted
+    density = density[np.argsort(density[:,0])] 
+  
     otp = open(parser.parse_args().centered_file, 'w') 
     otp.write("# position density\n")
     for i in range(ndat):

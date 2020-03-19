@@ -55,7 +55,8 @@ simdilute=`python -c 'print(1.0-'$avg_rho')'`
 Dphi_gNP=`python -c 'print(('$avg_rhog'-'$rhog')/'$avg_rhog')'`
 Dphi_M=`python -c 'print(('$avg_rho'-'$rho')/'$avg_rho')'`
 Dxi=`python -c 'print(('$avg_xi'-'$xi')/'$avg_xi')'`
+Dz0=`python -c 'print(('$avg_z0'-'$z0')/'$avg_z0')'`
 
-echo "# developed?, enoughNP?, equilibrated?"
-echo "# (z0-3Delta) (z0+3Delta) phigNP-low minphi D(phi_gNP) D(phi_M) D(delta)" 
-echo $fraction1 $fraction2 $dilutemin $simdilute $Dphi_gNP $Dphi_M $Dxi
+#echo "# developed?, enoughNP?, equilibrated?"
+#echo "# (z0-3Delta) (z0+3Delta) phigNP-low minphi D(phi_gNP) D(phi_M) D(delta) D(z0)" 
+echo $fraction1 $fraction2 $dilutemin $simdilute $Dphi_gNP $Dphi_M $Dxi $Dz0
