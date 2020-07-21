@@ -25,6 +25,10 @@ def main(argv=None):
                    help='mesh size in the x-,y- and z-directions.')
     parser.add_argument("--density", type=float, required=True,
                    help='density, rho_0, in field part of simulation')
+    parser.add_argument("--density_collumn", type=int, default=3,
+                   help='data column with averaged density [0-indexed]')
+    parser.add_argument("--skip_lines", type=int, default=0,
+                   help='skip these lines in data file')
 
     if len(parser.parse_args().mesh) != 3:
         print "--mesh must have 3 values for x-, y- and z-direction"
@@ -32,6 +36,8 @@ def main(argv=None):
         
     Nx = parser.parse_args().mesh
     L = parser.parse_args().L_direction
+    rho_c = parser.parse_args().density_collumn
+    start_line = parser.parse_args().skip_lines
     if parser.parse_args().direction == 'x':
         loop_dir = 0
     elif parser.parse_args().direction == 'y':
@@ -40,7 +46,7 @@ def main(argv=None):
         loop_dir = 2
     
     # Read in density file
-    x, y, z, rho = fts.read_real_3d_dat(Nx[0], Nx[1], Nx[2], parser.parse_args().mesh_file)
+    x, y, z, rho = fts.read_real_3d_dat(Nx[0], Nx[1], Nx[2], parser.parse_args().mesh_file, rho_c, start_line)
     
     # Calculate density slice
     slice, std = fts.avg_3d_full_slice_no_shift(Nx[0], Nx[1], Nx[2], loop_dir, rho)

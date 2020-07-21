@@ -935,7 +935,7 @@ def read_2d_dat(Nx, Ny, name):
 
   return x,y, dat
 
-def read_real_3d_dat(Nx, Ny, Nz, name):
+def read_real_3d_dat(Nx, Ny, Nz, name, rho_col=3, start_line=0):
   M = Nx*Ny*Nz
   
   x = nmp.zeros(Nx,'double')
@@ -944,6 +944,9 @@ def read_real_3d_dat(Nx, Ny, Nz, name):
   dat = nmp.zeros(M,'double')
 
   inp = open(name,'r')
+  # skip headers
+  for iline in range(start_line): inp.readline()
+
   ind = 0
   for iz in range(0, Nz):
 
@@ -951,7 +954,8 @@ def read_real_3d_dat(Nx, Ny, Nz, name):
 
       for ix in range(0, Nx):
         line = inp.readline().split()
-        if (len(line) != 4):
+        
+        if (len(line) < rho_col):
           print "Line length error!"
           exit(1)
 
@@ -959,7 +963,7 @@ def read_real_3d_dat(Nx, Ny, Nz, name):
         y[iy] = float(line[1])
         z[iz] = float(line[2])
 
-        dat[ind] = float(line[3]) 
+        dat[ind] = float(line[rho_col]) 
         ind += 1
   inp.close()
 
