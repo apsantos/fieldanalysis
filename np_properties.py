@@ -302,7 +302,7 @@ class Analysis(object):
         atomids = []
         nmol = -1
         for iatom in range(frame['natoms']):
-            if frame['mol_name'][iatom] == self.gnp_mol_name:
+            #if frame['mol_name'][iatom] == self.gnp_mol_name:
                 amol = frame['amol'][iatom]
                 if amol not in molids:
                     atomids.append( [] )
@@ -327,6 +327,36 @@ class Analysis(object):
 
         return atomids, molids
 
+class StructureFactor(object):
+    def calculate(self):
+        k = {}
+        ik = np.zeros((self.nvectors,self.nvectors,self.nvectors))
+        maxk=0
+        rho = np.zeros((self.nvectors*3))
+        for kx in range(0,self.nvectors):
+            kx2 = kx*kx
+            for ky in range(0,self.nvectors):
+                ky2 = ky*ky
+                for kz in range(0,self.nvectors):
+                    kz2 = kz*kz
+                    tk = ma.sqrt(kx2+ky2+kz2)
+                    if tk not in k:
+                        ik[kx,ky,kz] = maxk
+                        maxk += 1
+                        k[maxk] = tk
+                    else:
+                        ik[kx,ky,kz] = k.key(tk)
+
+        for i in range(0,self.natoms):
+            for kx in range(0,self.nvectors):
+                krx = kx*r[i,0]
+                for ky in range(0,self.nvectors):
+                    kry = ky*r[i,1]
+                    for kz in range(0,self.nvectors):
+                        krz = kz*r[i,2]
+                        rho[ik[kx,ky,kz]] += ma.exp(self.factor*i*(krx+kry+krz))
+                        
+            
 class rdf(object):
     """
     Calculates and writes the radial distribution function
@@ -865,9 +895,9 @@ class Density(object):
     def calculate(self):
         self.nframes += 1
         for inp in range(len(self.NPmolids)):
-
             n_atom_np = self.NatomsNP[inp]
-            if (n_atom_np < 2): return
+
+            #if (n_atom_np < 2): return
 
             # loop over amphiphiles/chains/molecules
             cross_distance = [0,0,0]
