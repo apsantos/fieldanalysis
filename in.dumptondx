@@ -1,0 +1,12 @@
+# lmp -in in.datatondx -v dataname random_M1G51R6s1.829_x50y50z250
+units           lj
+atom_style      molecular
+boundary        p p p
+read_data       ${dataname}.data
+#read_dump       chi-15M1G51R6s1.829irandom2_x50y50z250.dump 80000 x y z
+group           G type 1
+group           M type 2
+group           P type 3
+group           X type 4
+group2ndx       ${dataname}.ndx all G M P X
+run 0
