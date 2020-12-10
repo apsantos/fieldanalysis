@@ -196,6 +196,34 @@ def avg_3d_orien_full_slice_no_shift(Nx, Ny, Nz, loop_dir, sxx, syy, szz, sxy, s
 
   return rhxx, rhyy, rhzz, rhxy, rhxz, rhyz
 
+def avg_3d_full_xyz_slice_no_shift(x, loop_dir, Nbin, binwidth, rho):
+
+  rh = nmp.zeros(Nbin,'cdouble')
+  rhstd = nmp.zeros(Nbin,'cdouble')
+  nrm = nmp.zeros(Nbin, 'd')
+
+  for ind in range(len(rho)):
+    #i_dir = int(m.floor(x[ind]/binwidth))
+    #i_dir = x[ind]/Ldir*Ndir
+    i_dir = int(x[ind]/binwidth)
+    rh[ i_dir ] += rho[ind]
+    nrm[ i_dir ] += 1.0
+
+  for i in range(Nbin):
+    if (nrm[i] > 0.0):
+      rh[i] = rh[i] / nrm[i]
+
+  for ind in range(len(rho)):
+    i_dir = int(x[ind]/binwidth)
+    rhstd[ i_dir ] += (rh[i_dir] - rho[ind])**2
+
+  for i in range(Nbin):
+    if (nrm[i] > 0.0):
+      rhstd[i] = (rhstd[i] / nrm[i] / 2.0)**0.5
+
+  return rh , rhstd
+
+
 def avg_3d_full_slice_no_shift(Nx, Ny, Nz, loop_dir, rho):
 
   Nmx = nmp.max([Nx, Ny , Nz])
@@ -232,13 +260,16 @@ def avg_3d_full_slice_no_shift(Nx, Ny, Nz, loop_dir, rho):
  
         if (loop_dir==0):
           ind = j + (k + i*Ny)*Nx
+          ind = k + (i + j*L1)*L2
         elif (loop_dir == 1):
           ind = k + (j + i*Ny)*Nx
+          ind = k + (i + j*L1)*L2
         else:
           ind = k + (i + j*Ny)*Nx
+          ind = k + (i + j*L1)*L2
 
         rh[ j ] += rho[ind]
- 
+        #print k, i, j, ind
         nrm[ j ] += 1.0
 
 
@@ -934,6 +965,35 @@ def read_2d_dat(Nx, Ny, name):
   inp.close()
 
   return x,y, dat
+
+def read_real_all_3d_dat(Nx, Ny, Nz, name, rho_col=3, start_line=0):
+  M = Nx*Ny*Nz
+  
+  x = nmp.zeros(M,'double')
+  y = nmp.zeros(M,'double')
+  z = nmp.zeros(M,'double')
+  dat = nmp.zeros(M,'double')
+
+  inp = open(name,'r')
+  # skip headers
+  for iline in range(start_line): inp.readline()
+
+  for ind in range(M):
+        line = inp.readline().split()
+        
+        if (len(line) < rho_col):
+          print "Line length error!"
+          exit(1)
+
+        x[ind] = float(line[0])
+        y[ind] = float(line[1])
+        z[ind] = float(line[2])
+
+        dat[ind] = float(line[rho_col]) 
+  inp.close()
+
+  return x,y,z, dat
+
 
 def read_real_3d_dat(Nx, Ny, Nz, name, rho_col=3, start_line=0):
   M = Nx*Ny*Nz
