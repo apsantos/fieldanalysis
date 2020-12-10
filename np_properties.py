@@ -331,7 +331,7 @@ class StructureFactor(object):
     def calculate(self):
         k = {}
         ik = np.zeros((self.nvectors,self.nvectors,self.nvectors))
-        maxk=0
+        maxk = 0
         rho = np.zeros((self.nvectors*3))
         for kx in range(0,self.nvectors):
             kx2 = kx*kx
@@ -761,7 +761,7 @@ class Density(object):
     """
     Calculates and writes Density profile
     """
-    def __init__(self, binsize, type_names, nbins=1000):
+    def __init__(self, binsize, type_names, nbins=10000):
         self.binsize = binsize
         self.nframes =0
         self.totalNgnp = 0
@@ -878,17 +878,17 @@ class Density(object):
             itype += 1
 
         dens_ofile.write( "\n" )
-        factor = (4.0 / 3.0) * ma.pi
+        factor = (4.0 / 3.0) * ma.pi 
         for ibin in range(0, self.nbins):
             r = self.binsize * (ibin + 0.5)
-            if (r > self.max_dist):break
+            if (r > self.max_dist): break
 
             dens_ofile.write( "%f " % r)
 
-            V_bin = factor * self.binsize**3.0 * ((ibin + 1)**3.0 - ibin**3.0)
+            V_bin = factor * self.binsize**3.0 * ((ibin + 0.5)**3.0 - (ibin-0.5)**3.0)
+            #V_bin = factor * self.binsize**3.0 * ((ibin + 1)**3.0 - ibin**3.0)
             for itype in range(self.ntypes):
                 dens_ofile.write( "%f " % (self.density[itype, ibin] / self.totalNgnp / V_bin) )
-                
 
             dens_ofile.write( "\n" )
 
@@ -902,6 +902,7 @@ class Density(object):
             # loop over amphiphiles/chains/molecules
             cross_distance = [0,0,0]
             p_pos = self.gnp_center_pos[inp,:]
+            #print p_pos
             igraft = 0
             for iatom in range( n_atom_np ):
                 # see if an atom has crossed the border
@@ -922,9 +923,9 @@ class Density(object):
 
                 self.max_dist = max(self.max_dist, distance)
                 ibin = int(distance / self.binsize)
+                print distance, ibin
                 self.density[self.type_nums[self.gnp_name[inp, iatom]], ibin] += 1
                 p_pos = self.gnp_pos[inp,iatom,:]
-
 
     def calculateSOL(self):
         for inp in range(len(self.NPmolids)):
@@ -935,17 +936,17 @@ class Density(object):
 
                 # loop over amphiphiles/chains/molecules
                 cross_distance = [0,0,0]
-                igraft = 0
-                pgraft = 0
                 for iatom in range( n_atom_sol ):
                     # see if an atom has crossed the border
-                    if iatom > 0:
-                        diff =  self.sol_pos[isol,iatom,:] - p_pos
-                        for idim in range(3):
-                            if diff[idim] > self.box_length_half[idim]:
-                                cross_distance[idim] -= self.box_length[idim]
-                            elif diff[idim] < -self.box_length_half[idim]:
-                                cross_distance[idim] += self.box_length[idim]
+                    if iatom == 0:
+                        p_pos = self.gnp_center_pos[inp,:]
+
+                    diff =  self.sol_pos[isol,iatom,:] - p_pos
+                    for idim in range(3):
+                        if diff[idim] > self.box_length_half[idim]:
+                            cross_distance[idim] -= self.box_length[idim]
+                        elif diff[idim] < -self.box_length_half[idim]:
+                            cross_distance[idim] += self.box_length[idim]
                     
                     p = self.sol_pos[isol,iatom,:] - self.gnp_center_pos[inp,:] + cross_distance[:]
                     distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
