@@ -15,8 +15,16 @@ def main(argv=None):
     parser.add_argument("--profile_file", type=str, required=True, help='input density profile file')
     parser.add_argument("--centered_file", type=str, default='centered_profile.dat', help='output centered density profile file')
     parser.add_argument('-l', "--start_line", type=int, default=1, help='starting line of density profile file')
+    parser.add_argument("--r_collumn", type=int, default=0, help='collumn for distance')
+    parser.add_argument("--rho_collumn", type=int, default=1, help='collumn for density')
+    parser.add_argument("--rho_normalizer", type=float, default=1.0, help='normalize density to [0,1]')
+    parser.add_argument("--r_normalizer", type=float, default=1.0, help='normalize distance to [0,1]')
 
     ndat = file_len(parser.parse_args().profile_file) - parser.parse_args().start_line
+    r_c = parser.parse_args().r_collumn
+    rho_c = parser.parse_args().rho_collumn
+    r_n = parser.parse_args().r_normalizer
+    rho_n = parser.parse_args().rho_normalizer
     density = np.zeros((ndat,2),'d')
 
     # read in box position and density
@@ -28,8 +36,8 @@ def main(argv=None):
         if j < parser.parse_args().start_line:
             j += 1
             continue
-        density[i,0] = float(data[0])
-        density[i,1] = float(data[1])
+        density[i,0] = float(data[r_c]) / r_n
+        density[i,1] = float(data[rho_c]) / rho_n
         i += 1
  
     den_sum = np.sum(density[:,1])
