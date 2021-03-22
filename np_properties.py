@@ -249,10 +249,12 @@ class Analysis(object):
                 if self.density_calc:
                     self.density.addNP(NPmolids, NPatomids)
                     self.density.addNPpos(frame)
-                    SOLatomids, SOLmolids = self.findSolutionids(frame)
-                    self.density.addSolution(frame,SOLatomids, SOLmolids)
+                    if '0' not in self.solution_anames:
+                        SOLatomids, SOLmolids = self.findSolutionids(frame)
+                        self.density.addSolution(frame,SOLatomids, SOLmolids)
                     self.density.calculate()
-                    self.density.calculateSOL()
+                    if '0' not in self.solution_anames:
+                        self.density.calculateSOL()
 
             if self.rdf_type_calc:
                 self.rdf.setFrame(frame)
@@ -303,12 +305,15 @@ class Analysis(object):
         nmol = -1
         for iatom in range(frame['natoms']):
             #if frame['mol_name'][iatom] == self.gnp_mol_name:
+            #print frame['atype'][iatom]
+            if ((frame['atype'][iatom] == int(self.np_aname)) or
+                (frame['atype'][iatom] == int(self.graft_aname))):
                 amol = frame['amol'][iatom]
                 if amol not in molids:
                     atomids.append( [] )
                     molids.append( frame['amol'][iatom] )
                     nmol += 1
-                atomids[nmol].append( iatom )
+                atomids[molids.index(amol)-1].append( iatom )
 
         return atomids, molids
 
@@ -317,13 +322,15 @@ class Analysis(object):
         atomids = []
         nmol = -1
         for iatom in range(frame['natoms']):
-            if frame['aname'][iatom] in self.solution_anames:
+            if ((str(frame['atype'][iatom]) in self.solution_anames) or 
+               (frame['aname'][iatom] in self.solution_anames)):
                 amol = frame['amol'][iatom]
                 if amol not in molids:
                     atomids.append( [] )
-                    molids.append( frame['amol'][iatom] )
+                    molids.append( amol )
                     nmol += 1
-                atomids[nmol].append( iatom )
+                
+                atomids[molids.index(amol)-1].append( iatom )
 
         return atomids, molids
 
@@ -775,7 +782,7 @@ class Density(object):
         self.type_names = type_names
         self.type_nums = {}
         
-        self.ntypes = 0
+        self.ntypes = 1
         for key, value in type_names.items():
             self.type_nums[value] = self.ntypes
             self.ntypes += 1
@@ -834,16 +841,24 @@ class Density(object):
         self.gnp_pos = np.zeros((self.Ngnp,max(self.NatomsNP),3))
         self.gnp_center_pos = np.zeros((self.Ngnp,3))
         self.gnp_name = np.chararray((self.Ngnp,max(self.NatomsNP)), 5)
+        self.gnp_type = np.zeros((self.Ngnp,max(self.NatomsNP)),dtype=np.int)
         self.gnp_mass = np.zeros((self.Ngnp,max(self.NatomsNP)))
 
+        #print                     self.NPmolids
         for inp in range(len(self.NPmolids)):
             for inpatom in range(len(self.NPatomids[inp])):
                 iatom = self.NPatomids[inp][inpatom]
-                if frame['aname'][iatom] == self.np_name:
-                    self.gnp_center_pos[inp,:] = frame['pos'][iatom,:]
                 self.gnp_pos[inp,inpatom,:] = frame['pos'][iatom,:]
-                self.gnp_name[inp,inpatom] = frame['aname'][iatom]
                 self.gnp_mass[inp,inpatom] = 1.0
+                if frame['aname'][iatom] != 'None':
+                    if frame['aname'][iatom] == self.np_name:
+                        self.gnp_center_pos[inp,:] = frame['pos'][iatom,:]
+                    self.gnp_name[inp,inpatom] = frame['aname'][iatom]
+                    self.gnp_type[inp,inpatom] = self.type_nums[frame['aname'][iatom]]
+                else:
+                    if frame['atype'][iatom] == int(self.np_name):
+                        self.gnp_center_pos[inp,:] = frame['pos'][iatom,:]
+                    self.gnp_type[inp,inpatom] = frame['atype'][iatom] - 1
 
     def addSolution(self, frame, SOLatomids, SOLmolids):
         self.SOLmolids = SOLmolids
@@ -852,18 +867,26 @@ class Density(object):
         self.NatomsSOL = []
         for imolSOL in range(len(SOLmolids)):
             self.NatomsSOL.append(len(SOLatomids[imolSOL][:]))
+        #print self.NatomsSOL, SOLatomids
 
         self.sol_pos = np.zeros((self.NmolsSOL,max(self.NatomsSOL),3))
         self.sol_center_pos = np.zeros((self.NmolsSOL,3))
         self.sol_name = np.chararray((self.NmolsSOL,max(self.NatomsSOL)), 5)
         self.sol_mass = np.zeros((self.NmolsSOL,max(self.NatomsSOL)))
+        self.sol_type = np.zeros((self.NmolsSOL,max(self.NatomsSOL)),dtype=np.int)
 
         for isol in range(len(self.SOLmolids)):
+            #print len(self.SOLmolids), len(self.SOLatomids[isol])
             for isolatom in range(len(self.SOLatomids[isol])):
+                #print isol, isolatom
                 iatom = self.SOLatomids[isol][isolatom]
                 self.sol_pos[isol,isolatom,:] = frame['pos'][iatom,:]
-                self.sol_name[isol,isolatom] = frame['aname'][iatom]
                 self.sol_mass[isol,isolatom] = 1.0
+                if frame['aname'][iatom] != 'None':
+                    self.sol_name[isol,isolatom] = frame['aname'][iatom]
+                    self.sol_type[isol,isolatom] = self.type_nums[frame['aname'][iatom]]
+                else:
+                    self.sol_type[isol,isolatom] = frame['atype'][iatom] 
 
     def write(self, runname):
         if (self.Ngnp == 0):
@@ -887,6 +910,14 @@ class Density(object):
 
             V_bin = factor * self.binsize**3.0 * ((ibin + 0.5)**3.0 - (ibin-0.5)**3.0)
             #V_bin = factor * self.binsize**3.0 * ((ibin + 1)**3.0 - ibin**3.0)
+            V_cap=0
+            if (r > self.box_length_half[0]):
+                V_cap = 6.* 2.*ma.pi*self.binsize**3.0*(
+                        ((ibin + 0.5)*(ibin + 0.5-self.box_length_half[0]/self.binsize))-
+                        ((ibin - 0.5)*(ibin - 0.5-self.box_length_half[0]/self.binsize)))
+            V_bin -= V_cap
+            # correct for box
+            #print 'totoal', self.density[1, ibin], self.totalNgnp, V_bin, V_cap
             for itype in range(self.ntypes):
                 dens_ofile.write( "%f " % (self.density[itype, ibin] / self.totalNgnp / V_bin) )
 
@@ -906,25 +937,27 @@ class Density(object):
             igraft = 0
             for iatom in range( n_atom_np ):
                 # see if an atom has crossed the border
-                if self.gnp_name[inp,iatom] == self.anchor_name:
-                    igraft += 1
-                    p_pos = self.gnp_center_pos[inp,:]
-                    cross_distance = [0,0,0]
+                #if self.gnp_type[inp,iatom] == self.anchor_name:
+                ##if self.gnp_name[inp,iatom] == self.anchor_name:
+                #    igraft += 1
+                #    p_pos = self.gnp_center_pos[inp,:]
+                #    cross_distance = [0,0,0]
 
-                diff =  self.gnp_pos[inp,iatom,:] - p_pos
-                for idim in range(3):
-                    if diff[idim] > self.box_length_half[idim]:
-                        cross_distance[idim] -= self.box_length[idim]
-                    elif diff[idim] < -self.box_length_half[idim]:
-                        cross_distance[idim] += self.box_length[idim]
-                
+                #diff =  self.gnp_pos[inp,iatom,:] - p_pos
+                #for idim in range(3):
+                #    if diff[idim] > self.box_length_half[idim]:
+                #        cross_distance[idim] -= self.box_length[idim]
+                #    elif diff[idim] < -self.box_length_half[idim]:
+                #        cross_distance[idim] += self.box_length[idim]
+                #
                 p = self.gnp_pos[inp,iatom,:] - self.gnp_center_pos[inp,:] + cross_distance[:]
                 distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
 
                 self.max_dist = max(self.max_dist, distance)
                 ibin = int(distance / self.binsize)
-                print distance, ibin
-                self.density[self.type_nums[self.gnp_name[inp, iatom]], ibin] += 1
+                #print distance, ibin, self.gnp_type[inp, iatom]
+                self.density[self.gnp_type[inp, iatom], ibin] += 1
+                #self.density[self.type_nums[self.gnp_name[inp, iatom]], ibin] += 1
                 p_pos = self.gnp_pos[inp,iatom,:]
 
     def calculateSOL(self):
@@ -932,7 +965,8 @@ class Density(object):
             for isol in range(len(self.SOLmolids)):
 
                 n_atom_sol = self.NatomsSOL[isol]
-                if (n_atom_sol < 2): return
+                #print isol, n_atom_sol
+                if (n_atom_sol < 2): continue #return
 
                 # loop over amphiphiles/chains/molecules
                 cross_distance = [0,0,0]
@@ -953,7 +987,7 @@ class Density(object):
 
                     self.max_dist = max(self.max_dist, distance)
                     ibin = int(distance / self.binsize)
-                    self.density[self.type_nums[self.sol_name[isol, iatom]], ibin] += 1
+                    self.density[self.sol_type[inp, iatom], ibin] += 1
                     p_pos = self.sol_pos[isol,iatom,:]
 
     def checkSplitNP(self, inp):
@@ -1064,7 +1098,7 @@ def main(argv=None):
                    help='Configuration/Trajectory/movie file: *xyz '
                         'Right now only 1 file capability, ' 
                         'pdb and towhee_movie are under development')
-    parser.add_argument("--traj_type", type=str, choices=['xyz', 'gro', 'pdb'],
+    parser.add_argument("--traj_type", type=str, choices=['xyz', 'gro', 'pdb','dump'],
                    help='trajectory filetype')
     parser.add_argument("--start_frame", type=int,
                    help='Set the starting frame number.')
