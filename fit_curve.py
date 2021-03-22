@@ -19,6 +19,9 @@ class FitProfile(object):
         self.sqrt2 = ma.sqrt(2.0)
 
     def erf_profile_odr(self, B, x):
+        for i in range(4):
+            B[i] = max(B[i],0.00000000001)
+            B[i] = min(B[i],1)
         rho_g = B[0]
         rho_l = B[1]
         xi = B[2]
@@ -69,18 +72,23 @@ def main(argv=None):
             continue
         x[i] = float(data[0])
         y[i] = float(data[1]) 
-        if y[i] > 0.5 and i_half_a == 0:
-            i_half_a = i
-        if y[i] < 0.5 and i_half_b == 0:
-            if i_half_a != 0:
-                i_half_b = i
         i += 1
+
+    ymax = max(y)
+    for i in range(len(y)):
+        if y[i] > 0.5*ymax and i_half_a == 0:
+            i_half_a = i
+            break
+    for i in range(i_half_a+20,len(y)):
+        if y[i] < 0.5*ymax and i_half_b == 0:
+            i_half_b = i
+            break
 
     guess= np.zeros(4,'d')
     guess[0] = y[0]
-    guess[1] = y[int(ndat/2)]
+    guess[1] = ymax
     guess[2] = 0.1
-    guess[3] = (x[i_half_b]-x[i_half_a])/2
+    guess[3] = (x[i_half_b]-x[i_half_a])/2.
 
     profile = FitProfile()
     profile.L = L # set the L in the function
@@ -96,7 +104,7 @@ def main(argv=None):
     if fit_odr:
         model = odrpack.Model(profile.erf_profile_odr)
         data = odrpack.RealData(x,y)
-        myodr = odrpack.ODR(data, model, beta0=guess,maxit=100,sstol=1e-5)
+        myodr = odrpack.ODR(data, model, beta0=guess,maxit=500,sstol=1e-6)
         output = myodr.run()
         fit_data = output.beta
         fit_stdev = output.sd_beta
@@ -106,7 +114,7 @@ def main(argv=None):
         n = 0
         popt, pcov = curve_fit(profile.erf_profile_curve,x,y,guess,maxfev = 100000)
         while(n < 100):
-            popt, pcov = curve_fit(profile.erf_profile_curve,x,y,popt,maxfev = 100000)
+            popt, pcov = curve_fit(profile.erf_profile_curve,x,y,guess,maxfev = 100000)
             n += 1
         fit_stdev = np.sqrt(np.diag(pcov))
         fit_data = popt
@@ -115,7 +123,6 @@ def main(argv=None):
     profile.rho_l = fit_data[1]
     profile.xi = fit_data[2]
     profile.frac = fit_data[3]
-    print profile.rho_l
     print "# rho_g rho_l xi frac stdev[rho_g rho_l xi frac]"
     print fit_data[0], fit_data[1], fit_data[2], fit_data[3], fit_stdev[0], fit_stdev[1], fit_stdev[2], fit_stdev[3]
 
