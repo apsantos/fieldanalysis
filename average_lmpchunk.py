@@ -80,7 +80,7 @@ def main(argv=None):
                 for ic in range(ncol):
                     data[ic].append( float(strdata[ic+1]) )
                 if calctrace:
-                    data[ncol].append( (float(strdata[1])**2.+float(strdata[2])**2.+float(strdata[3])**2.)**0.5 )
+                    data[ncol].append( data[ic][0] + data[ic][1] + data[ic][2])
 
         data = np.array(data).T
 
