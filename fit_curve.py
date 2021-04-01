@@ -20,14 +20,15 @@ class FitProfile(object):
 
     def erf_profile_odr(self, B, x):
         for i in range(4):
-            B[i] = max(B[i],0.00000000001)
-            B[i] = min(B[i],1)
+            B[i] = max(B[i],self.minB,0.00001)
+            B[i] = min(B[i],self.maxB,1)
         rho_g = B[0]
         rho_l = B[1]
         xi = B[2]
         frac = B[3]
         factor = 0.5*(rho_l - rho_g) 
-        return rho_g + factor * (erf((x - self.L_2 + frac) / xi / self.sqrt2) - erf((x - self.L_2 - frac) / xi / self.sqrt2))
+        factor2 = xi * self.sqrt2
+        return rho_g + factor * (erf((x - self.L_2 + frac) / factor2) - erf((x - self.L_2 - frac) / factor2))
         #return rho_g + 0.5*(rho_l - rho_g) * erf(ma.sqrt(ma.pi) * (x - self.L/2.0 + frac) / xi) - 0.5*(rho_l - rho_g) * erf(ma.sqrt(ma.pi) * (x - self.L/2.0 - frac) / xi)
 
     def erf_profile_curve(self, x, rho_g, rho_l, xi, frac):
@@ -74,7 +75,10 @@ def main(argv=None):
         y[i] = float(data[1]) 
         i += 1
 
+    ymin = min(y)
     ymax = max(y)
+    #ymin = 1.-max(y)
+    #ymax = 1.-min(y)
     for i in range(len(y)):
         if y[i] > 0.5*ymax and i_half_a == 0:
             i_half_a = i
@@ -85,7 +89,7 @@ def main(argv=None):
             break
 
     guess= np.zeros(4,'d')
-    guess[0] = y[0]
+    guess[0] = ymin
     guess[1] = ymax
     guess[2] = 0.1
     guess[3] = (x[i_half_b]-x[i_half_a])/2.
@@ -102,6 +106,9 @@ def main(argv=None):
         fit_ls = True
 
     if fit_odr:
+        profile.minB = 0.0001 #ymin
+        profile.maxB = 1. #ymax
+        print ymin,ymax
         model = odrpack.Model(profile.erf_profile_odr)
         data = odrpack.RealData(x,y)
         myodr = odrpack.ODR(data, model, beta0=guess,maxit=500,sstol=1e-6)
