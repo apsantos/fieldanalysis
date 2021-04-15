@@ -840,6 +840,8 @@ class Density(object):
             raise TypeError('Box ill, or not defined, '
                            'not enough entrants (3 or 6 for 3D, 2 or 4 for 2D')
 
+        self.max_dist = max(box_length)
+
     def addNP(self, NPmolids, NPatomids):
         self.NPmolids = NPmolids
         self.NPatomids = NPatomids
