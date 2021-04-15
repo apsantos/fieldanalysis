@@ -11,6 +11,8 @@ def getfileinfo(fname):
     f.readline()
     nsteps = 1
     line = f.readline()
+    if len(line.strip().split()) > 2:
+        return -1, -1
     nchunk = int(line.strip().split()[1])
     ichunk = 0
     maxnchunk = 0
@@ -41,6 +43,10 @@ def main(argv=None):
 
     ifile = open(parser.parse_args().chunk_file, 'r')
     nsteps, maxnchunk = getfileinfo(parser.parse_args().chunk_file)
+    if nsteps == -1:
+        print parser.parse_args().chunk_file, " is not a LAMMPS chunk file, ending"
+        return    
+
     ifile.readline(); ifile.readline()
     nbins = parser.parse_args().histogram
     cols = ifile.readline().strip().split()[2:]
@@ -69,6 +75,7 @@ def main(argv=None):
 
     for istep in range(nsteps):
         nchunk = int(ifile.readline().strip().split()[1])
+        if nchunk <= 1: continue
         data = []
         for ic in range(tncol):
             data.append( [] )
@@ -80,7 +87,7 @@ def main(argv=None):
                 for ic in range(ncol):
                     data[ic].append( float(strdata[ic+1]) )
                 if calctrace:
-                    data[ncol].append( data[ic][0] + data[ic][1] + data[ic][2])
+                    data[ncol].append( float(strdata[1]) + float(strdata[2]) + float(strdata[3]) )
 
         data = np.array(data).T
 
@@ -98,7 +105,7 @@ def main(argv=None):
                     hfile.write( '%f %f\n' % (edges[i], histo[i]) )
                 hfile.close()
 
-        afile.close
+    afile.close
 
 if __name__ == '__main__':
     sys.exit(main())
