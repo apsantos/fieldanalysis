@@ -258,6 +258,7 @@ class Analysis(object):
 
             if self.rdf_type_calc:
                 self.rdf.setFrame(frame)
+                print 'hi'
                 self.rdf.calculateType()
                 if self.rdf_inNP_calc:
                     self.rdf.calculateInNP()
@@ -431,6 +432,7 @@ class rdf(object):
     def setFrame(self, frame):
         self.natom = frame['natoms']
         self.aname = frame['aname']
+        self.atype = frame['atype']
         self.pos = frame['pos']
         self.amol = frame['amol']
 
@@ -447,7 +449,11 @@ class rdf(object):
             for iatom in range(self.natom):
                 if (self.aname[iatom] == self.types[igroup,0]):
                     self.n_total_group[igroup] += 1
+                elif (str(self.atype[iatom]) == self.types[igroup,0]):
+                    self.n_total_group[igroup] += 1
                 if (self.aname[iatom] == self.types[igroup,1]):
+                    self.n_total_group[igroup] += 1
+                elif (str(self.atype[iatom]) == self.types[igroup,1]):
                     self.n_total_group[igroup] += 1
     
     def setBinProperties(self):
@@ -477,7 +483,7 @@ class rdf(object):
             ofile.write( "%f %f\n" % (0.0, 0.0) )
                 
             factor = self.id_prefactor * self.nconf_type[igroup]
-            #if (self.types[igroup,0] != self.types[igroup,1]):
+            print self.nconf_type
             #    factor *= 2.0
             for ibin in range(self.nbins_type-1):
                 r = self.binsize_type * (ibin + 0.5)
@@ -508,19 +514,25 @@ class rdf(object):
 
     def calculateType(self):
         group_check = np.zeros( (self.n_type_groups), dtype = np.int)
+        print 'what up'
         for igroup in range(self.n_type_groups):
+            print 'what up', igroup
             # make a list of all atoms in the cluster
             i_atoms = []
             j_atoms = []
             for iatom in range(self.natom):
                 if (self.aname[iatom].strip() == self.types[igroup,0]):
                     i_atoms.append(iatom)
+                elif (str(self.atype[iatom]) == self.types[igroup,0]):
+                    i_atoms.append(iatom)
                 if (self.aname[iatom].strip() == self.types[igroup,1]):
-                #if (self.aname[iatom] == self.types[igroup,1]):
+                    j_atoms.append(iatom)
+                elif (str(self.atype[iatom]) == self.types[igroup,1]):
                     j_atoms.append(iatom)
 
             n_i = len(i_atoms)
             n_j = len(j_atoms)
+            print igroup, n_i, n_j
             if (n_i == 0 or n_j == 0): 
                 continue
             self.nconf_type[igroup] += 1
