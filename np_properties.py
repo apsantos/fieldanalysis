@@ -951,19 +951,18 @@ class Density(object):
             igraft = 0
             for iatom in range( n_atom_np ):
                 # see if an atom has crossed the border
-                #if self.gnp_type[inp,iatom] == self.anchor_name:
-                ##if self.gnp_name[inp,iatom] == self.anchor_name:
-                #    igraft += 1
-                #    p_pos = self.gnp_center_pos[inp,:]
-                #    cross_distance = [0,0,0]
+                if self.gnp_type[inp,iatom] == self.anchor_name:
+                    igraft += 1
+                    p_pos = self.gnp_center_pos[inp,:]
+                    cross_distance = [0,0,0]
 
-                #diff =  self.gnp_pos[inp,iatom,:] - p_pos
-                #for idim in range(3):
-                #    if diff[idim] > self.box_length_half[idim]:
-                #        cross_distance[idim] -= self.box_length[idim]
-                #    elif diff[idim] < -self.box_length_half[idim]:
-                #        cross_distance[idim] += self.box_length[idim]
-                #
+                diff =  self.gnp_pos[inp,iatom,:] - p_pos
+                for idim in range(3):
+                    if diff[idim] > self.box_length_half[idim]:
+                        cross_distance[idim] -= self.box_length[idim]
+                    elif diff[idim] < -self.box_length_half[idim]:
+                        cross_distance[idim] += self.box_length[idim]
+                
                 p = self.gnp_pos[inp,iatom,:] - self.gnp_center_pos[inp,:] + cross_distance[:]
                 distance = ( p[0]**2.0 + p[1]**2.0 + p[2]**2.0 )**0.5
 
