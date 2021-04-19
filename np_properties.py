@@ -37,13 +37,9 @@ class Analysis(object):
         """
         Get relevant values from an argparse parser
         """
-        self.start_frame = 1
-        if (parser.parse_args().start_frame):
-            self.start_frame = parser.parse_args().start_frame
 
-        self.end_frame = 1
-        if (parser.parse_args().end_frame):
-            self.end_frame = parser.parse_args().end_frame
+        self.start_frame = parser.parse_args().start_frame
+        self.end_frame = parser.parse_args().end_frame
 
         self.ex_vol_calc = False
         if (parser.parse_args().ex_vol):
@@ -258,7 +254,6 @@ class Analysis(object):
 
             if self.rdf_type_calc:
                 self.rdf.setFrame(frame)
-                print 'hi'
                 self.rdf.calculateType()
                 if self.rdf_inNP_calc:
                     self.rdf.calculateInNP()
@@ -483,7 +478,6 @@ class rdf(object):
             ofile.write( "%f %f\n" % (0.0, 0.0) )
                 
             factor = self.id_prefactor * self.nconf_type[igroup]
-            print self.nconf_type
             #    factor *= 2.0
             for ibin in range(self.nbins_type-1):
                 r = self.binsize_type * (ibin + 0.5)
@@ -514,9 +508,7 @@ class rdf(object):
 
     def calculateType(self):
         group_check = np.zeros( (self.n_type_groups), dtype = np.int)
-        print 'what up'
         for igroup in range(self.n_type_groups):
-            print 'what up', igroup
             # make a list of all atoms in the cluster
             i_atoms = []
             j_atoms = []
@@ -532,7 +524,6 @@ class rdf(object):
 
             n_i = len(i_atoms)
             n_j = len(j_atoms)
-            print igroup, n_i, n_j
             if (n_i == 0 or n_j == 0): 
                 continue
             self.nconf_type[igroup] += 1
@@ -1113,9 +1104,9 @@ def main(argv=None):
                         'pdb and towhee_movie are under development')
     parser.add_argument("--traj_type", type=str, choices=['xyz', 'gro', 'pdb','dump'],
                    help='trajectory filetype')
-    parser.add_argument("--start_frame", type=int,
+    parser.add_argument("--start_frame", type=int, default=1,
                    help='Set the starting frame number.')
-    parser.add_argument("--end_frame", type=int,
+    parser.add_argument("--end_frame", type=int, default=1,
                    help='Set the ending frame number.')
     parser.add_argument('-d', "--density", type=float,
                    help='Calculate the density profile of each atom types in micelles, give the bin width')
