@@ -17,14 +17,15 @@ def getfileinfo(fname):
     ichunk = 0
     maxnchunk = 0
     while line:
-        if ichunk == nchunk+1:
-            ichunk = 0
-            nchunk = int(line.strip().split()[1])
-            nsteps += 1
-            maxnchunk = max(maxnchunk, nchunk)
-        else:
-            ichunk += 1
         line = f.readline()
+        if ichunk < nchunk:
+            ichunk += 1
+        elif ichunk == nchunk:
+            if len(line.strip().split()) < 2: break
+            ichunk = 0
+            nsteps += 1
+            nchunk = int(line.strip().split()[1])
+            maxnchunk = max(maxnchunk, nchunk)
         
     maxnchunk = max(maxnchunk, nchunk)
     f.close()
