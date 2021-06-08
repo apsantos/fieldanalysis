@@ -1,4 +1,6 @@
-#!/usr/bin/python
+#!/Users/asanto/anaconda3/bin/python
+# #!/usr/bin/python
+# #!/usr/bin/env python3
 import sys, argparse
 import math as ma
 import numpy as np
@@ -19,11 +21,11 @@ class FitProfile(object):
         self.sqrt2 = ma.sqrt(2.0)
 
     def erf_profile_odr(self, B, x):
-        for i in range(4):
-            B[i] = max(B[i],self.minB,0.00001)
-            B[i] = min(B[i],self.maxB,1)
-        rho_g = B[0]
-        rho_l = B[1]
+        rho_g = max(B[0],self.minB)
+        rho_l = min(B[1],self.maxB)
+        for i in [2,3]:
+            B[i] = max(B[i],0.00001)
+            B[i] = min(B[i],1)
         xi = B[2]
         frac = B[3]
         factor = 0.5*(rho_l - rho_g) 
@@ -50,10 +52,22 @@ def main(argv=None):
     parser.add_argument("--fit_file", type=str, default='fitted_profile.dat', help='output fitted density profile file')
     parser.add_argument("--L_direction", type=float, default=1, help='length of simulation box in averaging direction')
     parser.add_argument('-l', "--start_line", type=int, default=1, help='starting line of density profile file')
-    parser.add_argument("--fit_method", type=str, default='odr', choices=['odr','ls'], 
-        help='odr: orthogonal distance regression, ls: least squares')
+    parser.add_argument("--fit_method", type=str, default='odr', choices=['odr','trf','lm'], 
+        help='odr: orthogonal distance regression, lm: least squares')
+    parser.add_argument("--phi_low_min", type=float, help='minimum bound for the low phi fit value')
+    parser.add_argument("--phi_hi_max", type=float, help='maximum bound for the hi phi fit value')
 
     L = parser.parse_args().L_direction
+
+    set_phi_low_min = False
+    if parser.parse_args().phi_low_min:
+        set_phi_low_min = True
+        phi_low_min = parser.parse_args().phi_low_min
+
+    set_phi_hi_max = False
+    if parser.parse_args().phi_hi_max:
+        set_phi_hi_max = True
+        phi_hi_max = parser.parse_args().phi_hi_max
 
     ndat = file_len(parser.parse_args().profile_file) - parser.parse_args().start_line
     x = np.zeros(ndat,'d')
@@ -79,19 +93,20 @@ def main(argv=None):
     ymax = max(y)
     #ymin = 1.-max(y)
     #ymax = 1.-min(y)
+    halfway = ymin + 0.5*(ymax - ymin)
     for i in range(len(y)):
-        if y[i] > 0.5*ymax and i_half_a == 0:
+        if y[i] > halfway and i_half_a == 0:
             i_half_a = i
             break
     for i in range(i_half_a+20,len(y)):
-        if y[i] < 0.5*ymax and i_half_b == 0:
+        if y[i] < halfway and i_half_b == 0:
             i_half_b = i
             break
 
     guess= np.zeros(4,'d')
-    guess[0] = ymin
-    guess[1] = ymax
-    guess[2] = 0.1
+    guess[0] = max(ymin,0.0)
+    guess[1] = min(ymax,1.0)
+    guess[2] = 0.5
     guess[3] = (x[i_half_b]-x[i_half_a])/2.
 
     profile = FitProfile()
@@ -99,29 +114,45 @@ def main(argv=None):
     profile.L_2 = L/2.0 # set the L in the function
 
     fit_odr = False
-    fit_ls = False
+    fit_lm = False
+    fit_trf = False
     if parser.parse_args().fit_method == 'odr': 
         fit_odr = True
-    elif parser.parse_args().fit_method == 'ls': 
-        fit_ls = True
+    elif parser.parse_args().fit_method == 'lm': 
+        fit_lm = True
+    elif parser.parse_args().fit_method == 'trf': 
+        fit_trf = True
 
     if fit_odr:
-        profile.minB = 0.0001 #ymin
-        profile.maxB = 1. #ymax
-        print ymin,ymax
+        profile.minB = 0.000001
+        profile.maxB = 1.0
+        if set_phi_low_min: profile.minB = phi_low_min
+        if set_phi_hi_max:  profile.maxB = phi_hi_max
+        
         model = odrpack.Model(profile.erf_profile_odr)
         data = odrpack.RealData(x,y)
-        myodr = odrpack.ODR(data, model, beta0=guess,maxit=500,sstol=1e-6)
+        myodr = odrpack.ODR(data, model, beta0=guess,maxit=1000,sstol=1e-6)
         output = myodr.run()
         fit_data = output.beta
         fit_stdev = output.sd_beta
  
     # fit the curve
-    elif fit_ls:
+    elif fit_lm or fit_trf:
+        if set_phi_low_min: 
+            pmin = phi_low_min
+        else:
+            pmin = 0.0000
+        if set_phi_hi_max:  
+            pmax = phi_hi_max
+        else:
+            pmax = 1.0
+        bounds=([pmin,pmin,0.00001,0.00001], [pmax,pmax, 1.,1.])
+        #print (bounds)
+        #print (guess)
         n = 0
-        popt, pcov = curve_fit(profile.erf_profile_curve,x,y,guess,maxfev = 100000)
+        popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method='trf')
         while(n < 100):
-            popt, pcov = curve_fit(profile.erf_profile_curve,x,y,guess,maxfev = 100000)
+            popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
             n += 1
         fit_stdev = np.sqrt(np.diag(pcov))
         fit_data = popt
@@ -130,14 +161,14 @@ def main(argv=None):
     profile.rho_l = fit_data[1]
     profile.xi = fit_data[2]
     profile.frac = fit_data[3]
-    print "# rho_g rho_l xi frac stdev[rho_g rho_l xi frac]"
-    print fit_data[0], fit_data[1], fit_data[2], fit_data[3], fit_stdev[0], fit_stdev[1], fit_stdev[2], fit_stdev[3]
+    print ("# rho_g rho_l xi frac stdev[rho_g rho_l xi frac]")
+    print (fit_data[0], fit_data[1], fit_data[2], fit_data[3], fit_stdev[0], fit_stdev[1], fit_stdev[2], fit_stdev[3])
 
     fit = np.zeros(ndat,'d')
     for i in range(0,ndat):
         if fit_odr:
             fit[i] = profile.erf_profile_odr(fit_data, x[i])
-        elif fit_ls:
+        elif fit_lm or fit_trf:
             fit[i] = profile.erf_profile_curve(x[i], fit_data[0], fit_data[1], fit_data[2], fit_data[3])
 
     otp = open(parser.parse_args().fit_file, 'w') 
