@@ -43,7 +43,7 @@ dmft_slice.py --mesh_file $instfile --profile_file rho_3.profile --L_direction $
 # center the denisty profile
 com2.py --profile_file rho_1.profile --centered_file rho_1.shifted -l 1
 #com2.py --profile_file avg_rho_1.profile --centered_file avg_rho_1.shifted -l 1
-#com2.py --profile_file rho_2.profile --centered_file rho_2.shifted -l 1
+com2.py --profile_file rho_2.profile --centered_file rho_2.shifted -l 1
 #com2.py --profile_file avg_rho_2.profile --centered_file avg_rho_2.shifted -l 1
 #com2.py --profile_file rho_3.profile --centered_file rho_3.shifted -l 1
 #com2.py --profile_file avg_rho_3.profile --centered_file avg_rho_3.shifted -l 1
@@ -51,7 +51,7 @@ com2.py --profile_file rho_1.profile --centered_file rho_1.shifted -l 1
 # fit the denisty profile
 fit_curve.py --profile_file  rho_1.shifted --fit_file rho_1.shifted_fit --L_direction 1 -l 1 --fit_method odr > rho_1.fits
 #fit_curve.py --profile_file  avg_rho_1.shifted --fit_file avg_rho_1.shifted_fit --L_direction 1 -l 1 --fit_method odr > avg_rho_1.fits 
-#fit_curve.py --profile_file  rho_2.shifted --fit_file rho_2.shifted_fit --L_direction 1 -l 1 --fit_method odr > rho_2.fits
+fit_curve.py --profile_file  rho_2.shifted --fit_file rho_2.shifted_fit --L_direction 1 -l 1 --fit_method odr > rho_2.fits
 #fit_curve.py --profile_file  avg_rho_2.shifted --fit_file avg_rho_2.shifted_fit --L_direction 1 -l 1 --fit_method odr > avg_rho_2.fits 
 #fit_curve.py --profile_file  rho_3.shifted --fit_file rho_3.shifted_fit --L_direction 1 -l 1 --fit_method odr > rho_3.fits
 #fit_curve.py --profile_file  avg_rho_3.shifted --fit_file avg_rho_3.shifted_fit --L_direction 1 -l 1 --fit_method odr > avg_rho_3.fits 
