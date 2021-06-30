@@ -195,7 +195,6 @@ class Analysis(object):
                 for igraft in range(self.nanchors):
                     self.mols[igraft] = igraft
                     shift, orientation = self.getGraft(imol, igraft)
-
                     self.shiftpos[self.anchorids[igraft],:] = self.reference
                     # -orientation = NP center position, 0 is graft
                     for iatom in self.graftids[igraft,:]:
@@ -207,12 +206,12 @@ class Analysis(object):
                         # un wrap
                         for idim in [0,1,2]:
                             if ( self.shiftpos[iatom,idim] > self.box_length_half[idim] ):
-                                self.shiftpos[iatom,idim] -= self.box_length_half[idim]
+                                self.shiftpos[iatom,idim] -= self.box_length[idim]
                             elif ( self.shiftpos[iatom,idim] < -self.box_length_half[idim] ):
-                                self.shiftpos[iatom,idim] += self.box_length_half[idim]
+                                self.shiftpos[iatom,idim] += self.box_length[idim]
                         # rotate
                         self.shiftpos[iatom,:] = orientation.dot( self.shiftpos[iatom,:] )
-                        # shift to center
+                        ### shift to center
                         self.shiftpos[iatom,:] = self.shiftpos[iatom,:] + self.box_length_half
                         #for idim in [0,1,2]:
                         #    if ( self.shiftpos[iatom,idim] > self.box[idim] ):
@@ -248,25 +247,30 @@ class Analysis(object):
         #shift = self.pos[self.anchorids[igraft], :]
         shift = np.array(self.pos[self.anchorids[igraft],:] - self.reference )
 
-        anchorpoint = self.pos[self.anchorids[igraft], :] 
-        vector = np.array(anchorpoint - self.pos[self.npids[imol], :] )
+        #anchorpoint = self.pos[self.anchorids[igraft], :] 
+        #vector = np.array(anchorpoint - self.pos[self.npids[imol], :] )
         #vector = np.array(anchorpoint - self.pos[self.npids[imol], :] + self.reference[0])
-        nvector = vector/LA.norm(vector)
-        ortho = np.cross(nvector, np.array([1,0,0]))
-        northo = ortho/LA.norm(ortho)
-        theta = np.arccos( np.dot(nvector, np.array([1,0,0])))
-        r = np.cos(theta/2.0) + northo * np.sin(theta/2.0)
+        #nvector = vector/LA.norm(vector)
+        #ortho = np.cross(nvector, np.array([1,0,0]))
+        #northo = ortho/LA.norm(ortho)
+        #theta = np.arccos( np.dot(nvector, np.array([1,0,0])))
+        #r = np.cos(theta/2.0) + northo * np.sin(theta/2.0)
         #return shift[:], r
 
-        vector = np.array(self.pos[self.anchorids[igraft],:] - self.pos[self.npids[imol], :])
-        alpha = np.arccos(-nvector[1]/(1.-nvector[2]**2.)**0.5)
-        beta = np.arccos(nvector[2])
-        gamma = np.arccos(-nvector[1]/(1.-nvector[2]**2.)**0.5)
-        temp = (vector[0]**2.+vector[1]**2.)**0.5
-        r = R.from_euler('zx', [np.arcsin(vector[2]/self.reference[0]), np.arccos(temp/self.reference[0])*2. ], degrees=False)
+        #vector = np.array(self.pos[self.anchorids[igraft],:] - self.pos[self.npids[imol], :])
+        #alpha = np.arccos(-nvector[1]/(1.-nvector[2]**2.)**0.5)
+        #beta = np.arccos(nvector[2])
+        #gamma = np.arccos(-nvector[1]/(1.-nvector[2]**2.)**0.5)
+        #temp = (vector[0]**2.+vector[1]**2.)**0.5
+        #r = R.from_euler('zx', [np.arcsin(vector[2]/self.reference[0]), np.arccos(temp/self.reference[0])*2. ], degrees=False)
         #return shift[:], r.as_dcm()
 
         vec1 = np.array(self.pos[self.anchorids[igraft],:] - self.pos[self.npids[imol], :])
+        for idim in [0,1,2]:
+            if ( vec1[idim] > self.box_length_half[idim] ):
+                vec1[idim] -= self.box_length[idim]
+            elif ( vec1[idim] < -self.box_length_half[idim] ):
+                vec1[idim] += self.box_length[idim]
         vec2 = np.array([1,0,0])
         a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
         v = np.cross(a, b)
