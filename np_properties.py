@@ -19,6 +19,19 @@ import collections
 
 compare = lambda x, y: collections.Counter(x) == collections.Counter(y)
 
+def calcDistSQ(ix, jx, iy=0.0, jy=0.0,iz=0.0,jz=0.0):
+    dist = 0.0
+    d = [(ix - jx), (iy - jy), (iz - jz)]
+    for idim in [0,1,2]:
+        #dist = d - (self.box_length[idim] * int( round(d / self.box_length[idim]) ))
+        #elif (d[idim] >= self.box[idim, 1]):
+        if   (d[idim] < -self.box_length_half[idim]):
+            d[idim] += self.box_length[idim]
+        elif   (d[idim] >= self.box_length_half[idim]):
+            d[idim] -= self.box_length[idim]
+        dist += d[idim]**2.0
+    return dist
+
 def file_len(fname):
     with open(fname) as f:
         for i, l in enumerate(f):
@@ -68,8 +81,12 @@ class Analysis(object):
 
         self.gyration_calc = parser.parse_args().gyration
         self.principal_calc = parser.parse_args().principal
+        self.endtoend_calc = parser.parse_args().endtoend
         self.moment_calc = parser.parse_args().moment
         self.box = parser.parse_args().box_length
+        self.box_length_half = [0,0,0]
+        for idim in range(3):
+            self.box_length_half[idim] = self.box[idim]/2.0
 
         self._traj_filename = parser.parse_args().traj_file[0]
         self._f_type = parser.parse_args().traj_type
@@ -79,6 +96,9 @@ class Analysis(object):
         self.graft_aname = parser.parse_args().graft_name
         self.anchor_aname = parser.parse_args().anchor_name
         self.matrix_aname = parser.parse_args().matrix_name
+        self.calc_graft = False
+        if '0' in self.graft_aname:
+            self.calc_graft = False
 
         self.gnp_mol_name = parser.parse_args().gnp_name
         self.solution_anames = [self.matrix_aname]
@@ -177,6 +197,9 @@ class Analysis(object):
             self.RG.moment_calc = self.moment_calc
             self.RG.gyration_calc = self.gyration_calc
             self.RG.principal_calc = self.principal_calc
+            self.RG.endtoend_calc = self.endtoend_calc
+            self.RG.box_length = self.box
+            self.RG.box_length_half = self.box_length_half
 
         if (self.rdf_calc):
             maxM = 0
@@ -236,21 +259,35 @@ class Analysis(object):
                     trajectory.setBox(self.box)
                     self.setTrajProperties(frame, trajectory)
 
-            if self.rdf_inNP_calc or self.density_calc:
+            if self.rdf_inNP_calc or self.density_calc or self.gyration_calc or self.moment_calc:
                 NPatomids, NPmolids = self.findNPmolids(frame)
+                if '0' not in self.graft_aname:
+                    self.graftids, self.anchorids, self.npids = self.findGrafts(frame, NPmolids)
+                    print self.graftids
+                if '0' not in self.solution_anames:
+                    SOLatomids, SOLmolids = self.findSolutionids(frame)
+
+            if self.rdf_inNP_calc or self.density_calc:
                 if self.rdf_type_calc:
                     if self.rdf_inNP_calc:
                         for iNP in NPmolids:
                             self.rdf.addNP(iNP)
                 if self.density_calc:
-                    self.density.addNP(NPmolids, NPatomids)
-                    self.density.addNPpos(frame)
+                    if '0' not in self.graft_aname:
+                        self.density.addNP(NPmolids, NPatomids)
+                        self.density.addNPpos(frame)
                     if '0' not in self.solution_anames:
-                        SOLatomids, SOLmolids = self.findSolutionids(frame)
                         self.density.addSolution(frame,SOLatomids, SOLmolids)
                     self.density.calculate()
                     if '0' not in self.solution_anames:
                         self.density.calculateSOL()
+
+            if self.gyration_calc or self.moment_calc:
+                self.RG.pos = frame['pos']
+                if '0' not in self.graft_aname:
+                    self.RGgraft, self.Momentgraft, self.Endtoendgraft,self.RGgraftstd, self.Momentgraftstd, self.Endtoendgraftstd = self.RG.calculate(self.graftids)
+                if '0' not in self.solution_anames:
+                    self.RGsolution, self.Momentsolution, self.Endtoendsolution,self.RGsolutionstd, self.Momentsolutionstd, self.Endtoendsolutionstd = self.RG.calculate(SOLatomids)
 
             if self.rdf_type_calc:
                 self.rdf.setFrame(frame)
@@ -290,7 +327,14 @@ class Analysis(object):
         if self.density_calc:
             self.density.write(self._run_name)
         if self.gyration_calc or self.moment_calc:
-            self.RG.write(self._run_name)
+            if '0' not in self.graft_aname:
+                self.RG.write(self._run_name + '.radii', self.RGgraft, self.RGgraftstd)
+                self.RG.write(self._run_name + '.moment', self.Momentgraft, self.Momentgraftstd)
+                self.RG.writeEndtoend(self._run_name + '.endtoend', self.Endtoendgraft, self.Endtoendgraftstd)
+            if '0' not in self.solution_anames:
+                self.RG.write(self._run_name + '.radii', self.RGsolution, self.RGsolutionstd)
+                self.RG.write(self._run_name + '.moment', self.Momentsolution, self.Momentsolutionstd)
+                self.RG.writeEndtoend(self._run_name + '.endtoend', self.Endtoendsolution, self.Endtoendsolutionstd)
         if self.rdf_calc:
             if self.rdf_type_calc:
                 self.rdf.writeType(self._run_name)
@@ -326,9 +370,71 @@ class Analysis(object):
                     molids.append( amol )
                     nmol += 1
                 
+                atomids[molids.index(amol)].append( iatom )
+
+        return atomids, molids
+
+    def findCenterIds(self, frame):
+        molids = []
+        atomids = []
+        nmol = -1
+        for iatom in range(frame['natoms']):
+            #if frame['mol_name'][iatom] == self.gnp_mol_name:
+            #print frame['atype'][iatom]
+            if frame['atype'][iatom] == self.center_type:
+                amol = frame['amol'][iatom]
+                if amol not in molids:
+                    atomids.append( [] )
+                    molids.append( frame['amol'][iatom] )
+                    nmol += 1
                 atomids[molids.index(amol)-1].append( iatom )
 
         return atomids, molids
+
+    def findGrafts(self, frame, gnpmols):
+        nps = []
+        anchors = []
+        grafts = []
+        nmol = -1
+        ianchor = -1
+        for iatom in range(frame['natoms']):
+            #if frame['mol_name'][iatom] == self.gnp_mol_name:
+            #print frame['atype'][iatom]
+            if frame['amol'][iatom] in gnpmols:
+            #if frame['amol'][iatom] == self.molids[imol]:
+                atype = frame['atype'][iatom]
+                if str(atype) == self.np_aname:
+                    nps.append(iatom)
+                elif str(atype) == self.anchor_aname:
+                    anchors.append(iatom)
+                    grafts.append([])
+                    ianchor += 1
+                elif str(atype) == self.graft_aname:
+                    grafts[ianchor].append(iatom)
+                    #grafts.append(iatom)
+
+
+        self.nanchors = len(anchors)
+        return grafts, anchors, nps
+        # assume the atomids are in order and the only thing between anchors in list are grafts, ie ordered
+        #sort_anchors = np.sort(anchors)
+        #graftids = np.zeros( (self.nanchors, len(grafts)), dtype=np.int)
+        #maxNgraft = 0 
+        #for i in range(self.nanchors):
+        #    graftfirst = sort_anchors[i] + 1
+        #    if i < self.nanchors-1:
+        #        graftend = sort_anchors[i+1] - 1
+        #    else:
+        #        graftend = max(grafts)
+        #    ianchor = anchors.index(sort_anchors[i])
+        #    igraft = 0
+        #    for j in range(graftfirst,graftend+1):
+        #        graftids[ianchor,igraft] = j
+        #        igraft += 1
+        #    maxNgraft = max(maxNgraft, igraft)
+        #tgraftids = np.array(graftids[:,:maxNgraft])
+
+        #return tgraftids, anchors, nps
 
 class StructureFactor(object):
     def calculate(self):
@@ -615,56 +721,61 @@ class RadiiGyration(object):
     """
     Calculates and writes the radii of gyration
     """
-    def __init__(self, Mmax=20):
-        self.max_NP = Mmax
-        self.Rg = np.zeros( (self.max_NP+1, 4), dtype = np.float)
-        self.moment = np.zeros( (self.max_NP+1, 4), dtype = np.float)
-        self.nNP = np.zeros( (self.max_NP+1), dtype = np.int)
+    def __init__(self):
+        self.Rg = np.zeros( ( 4), dtype = np.float)
+        self.Rgstdv = np.zeros( ( 4), dtype = np.float)
+        self.moment = np.zeros( ( 4), dtype = np.float)
+        self.momentstdv = np.zeros( ( 4), dtype = np.float)
+        self.endtoend = 0.0
+        self.endtoendstdv = 0.0
         self.moment_calc = False
+        self.endtoend_calc = True
         self.gyration_calc = False
 
-    def addNP(self, imolNP):
-        self.imolNP = imolNP
-        return
+    def calcDist(self, ix, jx, iy=0.0, jy=0.0,iz=0.0,jz=0.0):
+        dist = 0.0
+        d = [(ix - jx), (iy - jy), (iz - jz)]
+        for idim in [0,1,2]:
+            #dist = d - (self.box_length[idim] * int( round(d / self.box_length[idim]) ))
+            #elif (d[idim] >= self.box[idim, 1]):
+            #if   (d[idim] < -self.box_length_half[idim]):
+            if   (d[idim] < -self.box_length_half[idim]):
+                d[idim] += self.box_length[idim]
+            elif   (d[idim] >= self.box_length_half[idim]):
+                d[idim] -= self.box_length[idim]
+            dist += d[idim]
+        return dist
 
-    def write(self, runname):
-        if (sum(self.nNP) == 0):
-            print 'No NPters found'
-            return
+    def calcDistVector(self, ix, jx, iy=0.0, jy=0.0,iz=0.0,jz=0.0):
+        dist = 0.0
+        d = [(ix - jx), (iy - jy), (iz - jz)]
+        for idim in [0,1,2]:
+            #dist = d - (self.box_length[idim] * int( round(d / self.box_length[idim]) ))
+            #elif (d[idim] >= self.box[idim, 1]):
+            #if   (d[idim] < -self.box_length_half[idim]):
+            if   (d[idim] < -self.box_length_half[idim]):
+                d[idim] += self.box_length[idim]
+            elif   (d[idim] >= self.box_length_half[idim]):
+                d[idim] -= self.box_length[idim]
+        return d
 
-        self.normalize()
 
-        if self.gyration_calc:
-            gy_ofile = open('./' + runname + '.radii', 'w')
-            gy_ofile.write( "M principal lower last\n")
+    def writeEndtoend(self, filename, data,stdev):
+        #self.normalize()
 
-        if self.moment_calc:
-            mom_ofile = open('./' + runname + '.moment', 'w')
-            mom_ofile.write( "M total principal lower last\n")
+        ofile = open( filename, 'w')
+        ofile.write( "# end-to-end stdev\n")
 
-        for iM in range(1, self.max_NP):
-            if (self.nNP[iM] > 0):
-                if self.gyration_calc:
-                    gy_ofile.write( "%d %f %f %f %f\n" % (iM, self.Rg[iM,0], self.Rg[iM,1], self.Rg[iM,2], self.Rg[iM,3]) )
-                if self.moment_calc:
-                    mom_ofile.write( "%d %f %f %f %f\n" % (iM, self.moment[iM,0], self.moment[iM,1], self.moment[iM,2], self.moment[iM,3]) )
+        ofile.write( "%f %f\n" % (data,stdev))
 
-        if self.gyration_calc:
-            gy_ofile.close()
-    
-            gy_ofile = open('./' + runname + 'ave.radii', 'w')
-            gy_ofile.write( "principal lower last\n")
-            gy_ofile.write( "%f %f %f %f\n" % (self.Rg_ave[0], self.Rg_ave[1], self.Rg_ave[2], self.Rg_ave[3]) )
-            gy_ofile.close()
+    def write(self, filename, Rg, Rgstdev):
+        #self.normalize()
 
-        if self.moment_calc:
-            mom_ofile.close()
-    
-            mom_ofile = open('./' + runname + 'ave.moment', 'w')
-            mom_ofile.write( "total principal lower last\n")
-            mom_ofile.write( "%f %f %f %f\n" % (self.I_ave[0], self.I_ave[1], self.I_ave[2], self.I_ave[3]) )
-            mom_ofile.close()
-        
+        ofile = open( filename, 'w')
+        ofile.write( "# total principal lower last stdevs\n")
+
+        ofile.write( "%f %f %f %f %f %f %f %f\n" % (Rg[0], Rg[1], Rg[2], Rg[3], Rgstdev[0], Rgstdev[1], Rgstdev[2], Rgstdev[3]) )
+
     def normalize(self):
         if (sum(self.ncluster) == 0):
             print 'No clusters found'
@@ -701,71 +812,144 @@ class RadiiGyration(object):
         if self.moment_calc:
             self.I_ave = np.divide(moment_ave, float(nclus_averaged))
 
-    def calculate(self, M):
-        this_clus = -1
-        for iclus in self.clus.l_cluster:
-            if (M == self.clus.N[iclus] and iclus not in self.lclusters):
-                this_clus = iclus
-                self.lclusters.append(iclus)
-                break
+    def calculate(self, atomids):
+        # atomids are [molecule, atom in molecule]
 
-        if (this_clus < 0): return
-        # positions corrected for the COM
-        com_clus, com_clus_pos = self.clus.comClusterPos(iclus)
-
-        n_atom_cluster = len(com_clus_pos[:,0])
-        if (n_atom_cluster < 2): return
-
-        self.ncluster[M] += 1
-
-        I_ij = np.zeros( (3, 3), dtype = np.float)
+        nmol = len(atomids)
+        I_ij = np.zeros( (nmol, 3, 3), dtype = np.float)
+        I_eigval = np.zeros( (nmol, 3), dtype = np.float)
+        x_eigval = np.zeros( (nmol, 3), dtype = np.float)
         if self.gyration_calc:
-            x_ij = np.zeros( (3, 3), dtype = np.float)
+            x_ij = np.zeros( (nmol, 3, 3), dtype = np.float)
+        endtoend = np.zeros( (nmol, 3), dtype = np.float)
 
-        # loop over amphiphiles/chains/molecules
-        for iatom in range( n_atom_cluster ):
-            # calculate the moment of gyration tensor
-            xx = com_clus_pos[iatom,0]**2
-            yy = com_clus_pos[iatom,1]**2
-            zz = com_clus_pos[iatom,2]**2
-            I_ij[0,0] += ( yy + zz )
-            I_ij[1,1] += ( xx + zz )
-            I_ij[2,2] += ( xx + yy )
-            I_ij[0,1] += -( com_clus_pos[iatom,0] * com_clus_pos[iatom,1] )
-            I_ij[1,2] += -( com_clus_pos[iatom,1] * com_clus_pos[iatom,2] )
-            I_ij[0,2] += -( com_clus_pos[iatom,0] * com_clus_pos[iatom,2] )
+        #nmol = len(atomids[:,0])
+        for imol in range(nmol):
+            natom = len(atomids[:][imol])
             if self.gyration_calc:
-                x_ij[0,0] += xx
-                x_ij[1,1] += yy
-                x_ij[2,2] += zz
+                tx_ij = np.zeros( (3, 3), dtype = np.float)
+            tI_ij = np.zeros( (3, 3), dtype = np.float)
+            #natom = 0
+            com = np.zeros( (3), dtype = np.float)
+            natom = len(atomids[:][imol])
+            firstatom = atomids[imol][0]
 
-        I_ij[1,0] = I_ij[0,1]
-        I_ij[2,1] = I_ij[1,2]
-        I_ij[2,0] = I_ij[0,2]
-        I_eigval = LA.eigvals(I_ij)
-        # total moment
-        self.moment[M, 0] += ma.sqrt(I_eigval[0]**2 + I_eigval[1]**2 + I_eigval[2]**2)
-        # principle moments
-        self.moment[M, 1] += np.amax(I_eigval)
-        self.moment[M, 2] += np.median(I_eigval)
-        self.moment[M, 3] += np.amin(I_eigval)
-        if self.gyration_calc:
-            self.Rg[M, 0] += ma.sqrt( (x_ij[0,0] + x_ij[1,1] + x_ij[2,2]) / n_atom_cluster )
+            #endtoend[imol,:] = self.calcDistVector(self.pos[atomids[imol][0],0],self.pos[atomids[imol][natom-1],0],
+            #                                 self.pos[atomids[imol][0],1],self.pos[atomids[imol][natom-1],1],
+            #                                 self.pos[atomids[imol][0],2],self.pos[atomids[imol][natom-1],2])
+            endtoend[imol,:] = self.pos[firstatom,:] - self.pos[atomids[imol][natom-1],:]
+
+            for iatom in atomids[:][imol]:
+            #for iatom in atomids[imol,:]:
+                # calculate the moment of gyration tensor
+                for idim in range(3):
+                    com[idim] += self.pos[iatom,idim]
+                    if iatom != firstatom:
+                        if self.pos[iatom-1,idim] - self.pos[iatom,idim] > self.box_length_half[idim]:
+                            endtoend[imol,idim] -= self.box_length[idim]
+                        elif self.pos[iatom-1,idim] - self.pos[iatom,idim] < -self.box_length_half[idim]:
+                            endtoend[imol,idim] += self.box_length[idim]
+
+                        if self.pos[firstatom,idim] - self.pos[iatom,idim] > self.box_length_half[idim]:
+                            com[idim] += self.box_length[idim]
+                        elif self.pos[firstatom,idim] - self.pos[iatom,idim] < -self.box_length_half[idim]:
+                            com[idim] -= self.box_length[idim]
+            com /= natom
+            for idim in range(3):
+                if com[idim] > self.box_length[idim]:
+                    com[idim] -= self.box_length[idim]
+                elif com[idim] < 0.0:
+                    com[idim] += self.box_length[idim]
+            for iatom in atomids[:][imol]:
+            #for iatom in atomids[imol,:]:
+                x = self.calcDist(self.pos[iatom,0], com[0])
+                y = self.calcDist(self.pos[iatom,1], com[1])
+                z = self.calcDist(self.pos[iatom,2], com[2])
+                xx = (x)**2
+                yy = (y)**2
+                zz = (z)**2
+                tI_ij[0,0] += ( yy + zz )
+                tI_ij[1,1] += ( xx + zz )
+                tI_ij[2,2] += ( xx + yy )
+                tI_ij[0,1] += -( x * y )
+                tI_ij[1,2] += -( y * z )
+                tI_ij[0,2] += -( x * z )
+                if self.gyration_calc:
+                    tx_ij[0,0] += xx
+                    tx_ij[1,1] += yy
+                    tx_ij[2,2] += zz
+            I_ij[imol,:,:] = tI_ij/natom
+            x_ij[imol,:,:] = tx_ij/natom
+            I_ij[imol,1,0] = I_ij[imol,0,1]
+            I_ij[imol,2,1] = I_ij[imol,1,2]
+            I_ij[imol,2,0] = I_ij[imol,0,2]
+            I_eigval[imol] = LA.eigvals(I_ij[imol,:,:])
+
+            # total moment
+            self.moment[0] += ma.sqrt(I_eigval[imol,0]**2 + I_eigval[imol,1]**2 + I_eigval[imol,2]**2)
+            # principle moments
+            self.moment[1] += np.amax(I_eigval)
+            self.moment[2] += np.median(I_eigval)
+            self.moment[3] += np.amin(I_eigval)
+            self.endtoend += ma.sqrt(endtoend[imol,0]**2 + endtoend[imol,1]**2 + endtoend[imol,2]**2)
+            if self.gyration_calc:
+                self.Rg[0] += ma.sqrt( (x_ij[imol,0,0] + x_ij[imol,1,1] + x_ij[imol,2,2]) )
+                if self.principal_calc:
+                    x_ij[imol,0,1] = -I_ij[imol,0,1]
+                    x_ij[imol,1,0] = -I_ij[imol,1,0]
+                    x_ij[imol,1,2] = -I_ij[imol,1,2]
+                    x_ij[imol,2,1] = -I_ij[imol,2,1]
+                    x_ij[imol,0,2] = -I_ij[imol,0,2]
+                    x_ij[imol,2,0] = -I_ij[imol,2,0]
+                    x_eigval[imol,:] = LA.eigvals(x_ij[imol,:,:])
+                    self.Rg[1] += ma.sqrt( np.amax(x_eigval[imol,:])  )
+                    self.Rg[2] += ma.sqrt( np.median(x_eigval[imol,:]) )
+                    self.Rg[3] += ma.sqrt( np.amin(x_eigval[imol,:]) )
+                else:
+                    self.Rg[1] += ma.sqrt( x_ij[imol,0,0] )
+                    self.Rg[2] += ma.sqrt( x_ij[imol,1,1] )
+                    self.Rg[3] += ma.sqrt( x_ij[imol,2,2] )
+
+        self.endtoend /= nmol
+        self.moment /= nmol
+        self.Rg /= nmol
+        # get the standard deviation
+        for imol in range(nmol):
+            r0 = ma.sqrt( (x_ij[imol,0,0] + x_ij[imol,1,1] + x_ij[imol,2,2]) )
             if self.principal_calc:
-                x_ij[0,1] = -I_ij[0,1]
-                x_ij[1,0] = -I_ij[1,0]
-                x_ij[1,2] = -I_ij[1,2]
-                x_ij[2,1] = -I_ij[2,1]
-                x_ij[0,2] = -I_ij[0,2]
-                x_ij[2,0] = -I_ij[2,0]
-                x_eigval = LA.eigvals(x_ij)
-                self.Rg[M, 1] += ma.sqrt( np.amax(x_eigval) / n_atom_cluster )
-                self.Rg[M, 2] += ma.sqrt( np.median(x_eigval) / n_atom_cluster )
-                self.Rg[M, 3] += ma.sqrt( np.amin(x_eigval) / n_atom_cluster )
+                r1 = ma.sqrt( np.amax(x_eigval[imol,:]))
+                r2 = ma.sqrt( np.median(x_eigval[imol,:]))
+                r3 = ma.sqrt( np.amin(x_eigval[imol,:]))
             else:
-                self.Rg[M, 1] += ma.sqrt( np.amax(x_ij) / n_atom_cluster )
-                self.Rg[M, 2] += ma.sqrt( np.median(x_ij) / n_atom_cluster )
-                self.Rg[M, 3] += ma.sqrt( np.amin(x_ij) / n_atom_cluster )
+                r1 = ma.sqrt( x_ij[imol,0,0] )
+                r2 = ma.sqrt( x_ij[imol,1,1] )
+                r3 = ma.sqrt( x_ij[imol,2,2] )
+            self.Rgstdv[0] +=  (r0 - self.Rg[0])**2.
+            self.Rgstdv[1] +=  (r1 - self.Rg[1])**2.
+            self.Rgstdv[2] +=  (r2 - self.Rg[2])**2.
+            self.Rgstdv[3] +=  (r3 - self.Rg[3])**2.
+
+            m0 = ma.sqrt(I_eigval[imol,0]**2 + I_eigval[imol,1]**2 + I_eigval[imol,2]**2)
+            m1 = np.amax(I_eigval)
+            m2 = np.median(I_eigval)
+            m3 = np.amin(I_eigval)
+            self.momentstdv[0] +=  (m0 - self.moment[0])**2.
+            self.momentstdv[1] +=  (m1 - self.moment[1])**2.
+            self.momentstdv[2] +=  (m2 - self.moment[2])**2.
+            self.momentstdv[3] +=  (m3 - self.moment[3])**2.
+
+            self.endtoendstdv += (ma.sqrt(endtoend[imol,0]**2 + endtoend[imol,1]**2 + endtoend[imol,2]**2) - self.endtoend)**2.
+
+        self.Rgstdv[0] = (self.Rgstdv[0] / nmol)**0.5
+        self.Rgstdv[1] = (self.Rgstdv[1] / nmol)**0.5
+        self.Rgstdv[2] = (self.Rgstdv[2] / nmol)**0.5
+        self.Rgstdv[3] = (self.Rgstdv[3] / nmol)**0.5
+        self.momentstdv[0] = (self.momentstdv[0] / nmol)**0.5
+        self.momentstdv[1] = (self.momentstdv[1] / nmol)**0.5
+        self.momentstdv[2] = (self.momentstdv[2] / nmol)**0.5
+        self.momentstdv[3] = (self.momentstdv[3] / nmol)**0.5
+        self.endtoendstdv = (self.endtoendstdv / nmol)**0.5
+        return self.Rg, self.moment, self.endtoend, self.Rgstdv, self.momentstdv, self.endtoendstdv
         
 class Density(object):
     """
@@ -1114,6 +1298,8 @@ def main(argv=None):
                    help='Calculate the moments of inertia of micelles')
     parser.add_argument('-r', "--gyration", action="store_true",
                    help='Calculate the radius of gyration of micelles')
+    parser.add_argument("--endtoend", action="store_true",
+                   help='Calculate the end-to-end distance and average for polymers and grafts')
     parser.add_argument("--principal", action="store_true",
                    help='Calculate the radius of gyration of micelles around the principal axes')
     parser.add_argument('-e', "--ex_vol", type=str, nargs='+',
