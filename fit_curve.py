@@ -54,6 +54,8 @@ def main(argv=None):
     parser.add_argument('-l', "--start_line", type=int, default=1, help='starting line of density profile file')
     parser.add_argument("--fit_method", type=str, default='odr', choices=['odr','trf','lm'], 
         help='odr: orthogonal distance regression, lm: least squares')
+    parser.add_argument("--phi_low_max", type=float, help='maximum bound for the low phi fit value')
+    parser.add_argument("--phi_hi_min", type=float, help='minimum bound for the hi phi fit value')
     parser.add_argument("--phi_low_min", type=float, help='minimum bound for the low phi fit value')
     parser.add_argument("--phi_hi_max", type=float, help='maximum bound for the hi phi fit value')
 
@@ -63,6 +65,16 @@ def main(argv=None):
     if parser.parse_args().phi_low_min:
         set_phi_low_min = True
         phi_low_min = parser.parse_args().phi_low_min
+
+    set_phi_low_max = False
+    if parser.parse_args().phi_low_max:
+        set_phi_low_max = True
+        phi_low_max = parser.parse_args().phi_low_max
+
+    set_phi_hi_min = False
+    if parser.parse_args().phi_hi_min:
+        set_phi_hi_min = True
+        phi_hi_min = parser.parse_args().phi_hi_min
 
     set_phi_hi_max = False
     if parser.parse_args().phi_hi_max:
@@ -139,18 +151,26 @@ def main(argv=None):
     # fit the curve
     elif fit_lm or fit_trf:
         if set_phi_low_min: 
-            pmin = phi_low_min
+            plowmin = phi_low_min
         else:
-            pmin = 0.0000
+            plowmin = 0.0000
+        if set_phi_low_max: 
+            plowmax = phi_low_max
+        else:
+            plowmax = 1.0000
+        if set_phi_hi_min:  
+            phimin = phi_hi_min
+        else:
+            phimin = 0.0000
         if set_phi_hi_max:  
-            pmax = phi_hi_max
+            phimax = phi_hi_max
         else:
-            pmax = 1.0
-        bounds=([pmin,pmin,0.00001,0.00001], [pmax,pmax, 1.,1.])
-        #print (bounds)
+            phimax = 1.0
+        bounds=([plowmin,phimin,0.00001,0.00001], [plowmax,phimax, 1.,1.])
+        print (bounds)
         #print (guess)
         n = 0
-        popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method='trf')
+        popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
         while(n < 100):
             popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
             n += 1
