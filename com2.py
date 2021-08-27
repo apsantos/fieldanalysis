@@ -43,7 +43,9 @@ def main(argv=None):
     den_sum = np.sum(density[:,1])
   
     error = 100000
-    tol = 1e-6
+    tol = 1e-7
+    firsttime = 1
+    totalerror = 0
     while (abs(error) > tol):
         # calculate the center-of-mass of the density profile
         COM = 0.0
@@ -51,12 +53,14 @@ def main(argv=None):
             COM += density[i,1] * (density[i,0] - m.floor(density[i,0]))
         COM = COM / den_sum
         error = COM - 0.5
+        totalerror += error
       
         # shift the profile by the center-of-mass
         for i in range(ndat):
             density[i,0] = density[i,0] - error - m.floor(density[i,0] - error)
 
     # sort the values because they were shifted
+    print "COM/Lz: ", totalerror+0.5
     density = density[np.argsort(density[:,0])] 
 
     # center the dense part
