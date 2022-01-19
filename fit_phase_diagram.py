@@ -64,6 +64,9 @@ def main(argv=None):
     parser.add_argument("--temp_col", type=int, default=0, help='temperature col')
     parser.add_argument("--vapor_col", type=int, default=1, help='vapor col')
     parser.add_argument("--liquid_col", type=int, default=2, help='liquid col')
+    parser.add_argument("--dtemp_col", type=int, default=-1, help='temperature uncertainty col')
+    parser.add_argument("--dvapor_col", type=int, default=-1, help='vapor uncertainty col')
+    parser.add_argument("--dliquid_col", type=int, default=-1, help='liquid uncertainty col')
     parser.add_argument("--type", type=str, choices=['lcst','ucst'],default='ucst', help='Is this an upper or lower critcal solution temperature transition?')
     parser.add_argument("--Tmin", type=float, help='Default is to ignore and use full T range.')
     parser.add_argument("--Tmax", type=float, help='Default is to ignore and use full T range.')
@@ -71,16 +74,26 @@ def main(argv=None):
     c_t = parser.parse_args().temp_col
     c_v = parser.parse_args().vapor_col
     c_l = parser.parse_args().liquid_col
+    c_dt = parser.parse_args().dtemp_col
+    c_dv = parser.parse_args().dvapor_col
+    c_dl = parser.parse_args().dliquid_col
     ndat = file_len(parser.parse_args().profile_file) - parser.parse_args().start_line
 
     if parser.parse_args().Tmin:
         Tmin = parser.parse_args().Tmin
+    else:
+        Tmin = -10000
     if parser.parse_args().Tmax:
         Tmax = parser.parse_args().Tmax
+    else:
+        Tmax = 10000
 
     T = np.zeros(ndat,'d')
     rho_v = np.zeros(ndat,'d')
     rho_l = np.zeros(ndat,'d')
+    dT = np.zeros(ndat,'d')
+    drho_v = np.zeros(ndat,'d')
+    drho_l = np.zeros(ndat,'d')
     fitT = []
     fitrho_v = []
     fitrho_l = []
@@ -98,6 +111,9 @@ def main(argv=None):
         T[i] = float(data[c_t])
         rho_v[i] = float(data[c_v]) 
         rho_l[i] = float(data[c_l]) 
+        if c_dt >= 0: dT[i] = float(data[c_dt])
+        if c_dv >= 0: drho_v[i] = float(data[c_dv])
+        if c_dl >= 0: drho_l[i] = float(data[c_dl])
         if Tmin < T[i] and T[i] < Tmax:
             fitT.append( float(data[c_t]) )
             fitrho_v.append( float(data[c_v]) ) 
@@ -105,7 +121,6 @@ def main(argv=None):
         i += 1
     nfitdata = len(fitT)
     fitT = np.array(fitT)
-    print fitT
     fit_data = np.zeros((2,nfitdata),'d')
     for i in range(nfitdata):
         rho_mean = (rho_v[i]+rho_l[i])/2.0
@@ -120,21 +135,20 @@ def main(argv=None):
         else:
             T_c_max = 0.5*T_c_guess
     elif parser.parse_args().type == 'lcst':
-        T_c_guess = min(T) * 0.99
-        T_c_max = T_c_guess
+        T_c_max = min(T) * 0.9999
+        T_c_guess = min(T) * 0.9
         if T_c_guess > 0:
-            T_c_min = 0.5*T_c_guess
+            T_c_min = 0.7*T_c_guess
         else:
             T_c_min = 5.0*T_c_guess
 
-    rho_c_guess = (max(rho_v)+min(rho_l))/2.0
+    rho_c_guess = (max(rho_v)+min(rho_l))/2.0*1.001
 
-    print T_c_min, T_c_max
     fit_params = Parameters()
     fit_params.add( 'rho_c', value=rho_c_guess, min=max(rho_v),  max=min(rho_l))
     fit_params.add( 'T_c', value=T_c_guess, min=T_c_min, max=T_c_max)
-    fit_params.add( 'A', value=0.1, min=0.0,  max=100.0)
-    fit_params.add( 'delta_rho_0', value=0.1, min=0.0, max=3.0)
+    fit_params.add( 'A', value=0.1, min=-10.0,  max=100.0)
+    fit_params.add( 'delta_rho_0', value=5, min=2.0, max=10.0)
     
     profile = FitPhaseCoex()
     if parser.parse_args().type == 'ucst':
