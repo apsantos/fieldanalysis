@@ -1,5 +1,5 @@
-#!/Users/asanto/anaconda3/bin/python
-# #!/usr/bin/python
+#!/usr/bin/python
+# #!/Users/asanto/anaconda3/bin/python
 # #!/usr/bin/env python3
 import sys, argparse
 import math as ma
@@ -52,7 +52,8 @@ def main(argv=None):
     parser.add_argument("--fit_file", type=str, default='fitted_profile.dat', help='output fitted density profile file')
     parser.add_argument("--L_direction", type=float, default=1, help='length of simulation box in averaging direction')
     parser.add_argument('-l', "--start_line", type=int, default=1, help='starting line of density profile file')
-    parser.add_argument("--fit_method", type=str, default='odr', choices=['odr','trf','lm'], 
+    #parser.add_argument("--fit_method", type=str, default='odr', choices=['odr','trf','lm'], 
+    parser.add_argument("--fit_method", type=str, default='odr', choices=['odr','lm'], 
         help='odr: orthogonal distance regression, lm: least squares')
     parser.add_argument("--phi_low_max", type=float, help='maximum bound for the low phi fit value')
     parser.add_argument("--phi_hi_min", type=float, help='minimum bound for the hi phi fit value')
@@ -167,13 +168,19 @@ def main(argv=None):
         else:
             phimax = 1.0
         bounds=([plowmin,phimin,0.00001,0.00001], [plowmax,phimax, 1.,1.])
-        print (bounds)
+        #print (bounds)
         #print (guess)
         n = 0
-        popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
-        while(n < 100):
+        if fit_lm:
             popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
-            n += 1
+            while(n < 100):
+                popt, pcov = curve_fit(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
+                n += 1
+        elif fit_trf:
+            popt, pcov = least_squares(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
+            while(n < 100):
+                popt, pcov = least_squares(profile.erf_profile_curve, x, y, guess, bounds=bounds, maxfev = 100000, method=parser.parse_args().fit_method)
+                n += 1
         fit_stdev = np.sqrt(np.diag(pcov))
         fit_data = popt
 
@@ -181,8 +188,10 @@ def main(argv=None):
     profile.rho_l = fit_data[1]
     profile.xi = fit_data[2]
     profile.frac = fit_data[3]
-    print ("# rho_g rho_l xi frac stdev[rho_g rho_l xi frac]")
-    print (fit_data[0], fit_data[1], fit_data[2], fit_data[3], fit_stdev[0], fit_stdev[1], fit_stdev[2], fit_stdev[3])
+    #print ("# rho_g rho_l xi frac stdev[rho_g rho_l xi frac]")
+    #print (fit_data[0], fit_data[1], fit_data[2], fit_data[3], fit_stdev[0], fit_stdev[1], fit_stdev[2], fit_stdev[3])
+    print("# rho_g rho_l xi frac stdev[rho_g rho_l xi frac]")
+    print fit_data[0], fit_data[1], fit_data[2], fit_data[3], fit_stdev[0], fit_stdev[1], fit_stdev[2], fit_stdev[3]
 
     fit = np.zeros(ndat,'d')
     for i in range(0,ndat):
