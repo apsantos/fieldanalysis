@@ -21,6 +21,7 @@ def main(argv=None):
     parser.add_argument("--r_normalizer", type=float, default=1.0, help='normalize distance to [0,1]')
 
     ndat = file_len(parser.parse_args().profile_file) - parser.parse_args().start_line
+    ndat -= 1 # sometimes the last one is 0.0
     r_c = parser.parse_args().r_collumn
     rho_c = parser.parse_args().rho_collumn
     r_n = parser.parse_args().r_normalizer
@@ -36,8 +37,9 @@ def main(argv=None):
         if j < parser.parse_args().start_line:
             j += 1
             continue
-        density[i,0] = float(data[r_c]) / r_n
-        density[i,1] = float(data[rho_c]) / rho_n
+        if i< ndat:
+          density[i,0] = float(data[r_c]) / r_n
+          density[i,1] = float(data[rho_c]) / rho_n
         i += 1
  
     den_sum = np.sum(density[:,1])
