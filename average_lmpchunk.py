@@ -40,6 +40,9 @@ def main(argv=None):
     parser.add_argument('-a', "--average", action="store_true", default=True, help='calculate averages')
     parser.add_argument('-d', "--std_dev", action="store_true", default=True, help='calculate standrd deviations')
     parser.add_argument('-b', "--histogram", type=int, default=0, help='histogram number of bins, set to 0 to ignore')
+    parser.add_argument("--peaklocation", action="store_true", default=False, help='find the value peak and peak location')
+    parser.add_argument("--x_peakcolumn", type=int, default=0, help='column for peak location')
+    parser.add_argument("--y_peakcolumn", type=int, default=1, help='column for peak value')
     parser.add_argument("--calctrace", action="store_true", default=True, help='calctrace')
 
     ifile = open(parser.parse_args().chunk_file, 'r')
@@ -53,6 +56,13 @@ def main(argv=None):
     cols = ifile.readline().strip().split()[2:]
     ncol = len(cols)
     istep = 0
+    findpeak = parser.parse_args().peaklocation
+    if findpeak:
+        c_x = parser.parse_args().x_peakcolumn
+        c_y = parser.parse_args().y_peakcolumn
+    else:
+        c_x = -1
+        c_y = -1 
     calctrace = parser.parse_args().calctrace
     if calctrace:
         tdata = np.zeros((nsteps,ncol+1))
@@ -61,6 +71,10 @@ def main(argv=None):
         tdata = np.zeros((nsteps,ncol))
         tncol = ncol 
  
+    if findpeak: 
+        pfile = open(parser.parse_args().chunk_file+'peak', 'w')
+        pfile.write('# step peaklocation peak\n')
+
     if parser.parse_args().average:
         afile = open(parser.parse_args().chunk_file+'avg', 'w')
         afile.write('# step avg,std ')
@@ -78,6 +92,9 @@ def main(argv=None):
         nchunk = int(ifile.readline().strip().split()[1])
         if nchunk <= 1: continue
         data = []
+        if findpeak: 
+            maxp = -1000
+            maxlocation = 0
         for ic in range(tncol):
             data.append( [] )
 
@@ -85,12 +102,18 @@ def main(argv=None):
             rawdata = ifile.readline()
             if skipstring not in rawdata:
                 strdata = rawdata.strip().split()
+                if findpeak:
+                    if float(strdata[c_y]) > maxp:
+                        maxp = float(strdata[c_y])
+                        maxlocation = float(strdata[c_x])
                 for ic in range(ncol):
                     data[ic].append( float(strdata[ic+1]) )
                 if calctrace:
                     data[ncol].append( float(strdata[1]) + float(strdata[2]) + float(strdata[3]) )
 
         data = np.array(data).T
+        if findpeak: 
+            pfile.write('%d %f %f\n' % (istep, maxlocation, maxp))
 
         if parser.parse_args().average:
             afile.write('%d ' % istep)
@@ -106,7 +129,9 @@ def main(argv=None):
                     hfile.write( '%f %f\n' % (edges[i], histo[i]) )
                 hfile.close()
 
-    afile.close
+    afile.close()
+    if findpeak: 
+        pfile.close()
 
 if __name__ == '__main__':
     sys.exit(main())
