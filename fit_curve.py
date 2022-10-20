@@ -119,7 +119,8 @@ def main(argv=None):
     guess= np.zeros(4,'d')
     guess[0] = max(ymin,0.0)
     guess[1] = min(ymax,1.0)
-    guess[2] = 0.5
+    guess[2] = 0.1
+    #guess[2] = 0.5
     guess[3] = (x[i_half_b]-x[i_half_a])/2.
 
     profile = FitProfile()
@@ -144,7 +145,7 @@ def main(argv=None):
         
         model = odrpack.Model(profile.erf_profile_odr)
         data = odrpack.RealData(x,y)
-        myodr = odrpack.ODR(data, model, beta0=guess,maxit=1000,sstol=1e-6)
+        myodr = odrpack.ODR(data, model, beta0=guess,maxit=10000,sstol=1e-6)
         output = myodr.run()
         fit_data = output.beta
         fit_stdev = output.sd_beta
