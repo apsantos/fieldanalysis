@@ -9,10 +9,10 @@ from scipy.special import erf
 from scipy.optimize import curve_fit
 import scipy.odr.odrpack as odrpack
 from ovito.io import import_file, export_file
-from ovito.modifiers import SelectTypeModifier, DeleteSelectedModifier, AcklandJonesModifier
+from ovito.modifiers import SelectTypeModifier, DeleteSelectedModifier, AcklandJonesModifier, PolyhedralTemplateMatchingModifier
 
 
-   
+
 def main(argv=None):
     # Parse in command-line arguments, and create the user help instructions
     parser = argparse.ArgumentParser(description='Average meshed-field density'
@@ -20,18 +20,26 @@ def main(argv=None):
     parser.add_argument("--configfiles", type=str, required=True, nargs='+', help='configuration filename')
     parser.add_argument("--outputfile", type=str, required=True, help='filename with crystallinity as a function of time')
     parser.add_argument("--timestep", type=float, default=0.02, help='timestep')
+    parser.add_argument("--method", type=str, default='AcklandJones',
+                        choices=['PolyhedralTemplateMatching','AcklandJones'],
+                        help='Strucutre analysis method')
 
     pipeline = import_file(parser.parse_args().configfiles)
     # Select type:
     pipeline.modifiers.append(SelectTypeModifier(types = {10, 4, 5, 15}))
-    
+
     # Delete selected:
     pipeline.modifiers.append(DeleteSelectedModifier())
-    
+
     # Ackland-Jones analysis:
-    pipeline.modifiers.append(AcklandJonesModifier())
+    method = parser.parse_args().method
+    if method == 'AcklandJones':
+        pipeline.modifiers.append(AcklandJonesModifier())
+    elif method == 'PolyhedralTemplateMatching':
+        pipeline.modifiers.append(PolyhedralTemplateMatchingModifier())
+
     export_file(pipeline, parser.parse_args().outputfile, "txt/attr", multiple_frames = True,
-    columns = ["Timestep", 'AcklandJones.counts.FCC','AcklandJones.counts.HCP','AcklandJones.counts.BCC','AcklandJones.counts.ICO','AcklandJones.counts.OTHER'] )
+    columns = ["Timestep", method+'counts.FCC',method+'counts.HCP',method+'counts.BCC',method+'counts.ICO',method+'counts.OTHER'] )
 
     # calculte precentages
     ifile = open(parser.parse_args().outputfile, 'r' )
